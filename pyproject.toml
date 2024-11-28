@@ -8,4 +8,8 @@ dependencies = [
 "pygama>=2.0.0",
 "legend-daq2lh5>=1.2.1",
 "legend-pydataobj>=1.7",
+"numpy<2.0.0",
+"pandas",
+"matplotlib",
+"scipy",
 ]
