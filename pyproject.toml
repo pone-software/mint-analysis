@@ -3,7 +3,7 @@ name = "testbench"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.9, <3.13"
 dependencies = [
 "pygama>=2.0.0",
 "legend-daq2lh5>=1.2.1",
