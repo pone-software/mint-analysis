@@ -16,7 +16,7 @@ this contains all the info on the packages needed.
 
 To install the packages simply run `uv sync`and they should all install.
 
-Then to open a jupyter notebook: `uv run -- jupyter notebook`. (In fact you don't even need the `uv sync` and can 
+Then to open a jupyter notebook: `uv run --with jupyter jupyter notebook`. (In fact you don't even need the `uv sync` and can 
 simply do the run, uv will handle the rest). This will run a jupyter notebook instance inside the virtual environment.
 
 Some packages may cause issues such as h5py which may need to be installed separately via brew.
