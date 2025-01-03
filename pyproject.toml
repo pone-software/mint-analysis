@@ -3,16 +3,17 @@ name = "testbench"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.9, <3.13"
+requires-python = ">=3.10, <3.13"
 dependencies = [
 "pygama>=2.0.0",
 "legend-daq2lh5>=1.2.1",
 "legend-pydataobj>=1.7",
-"numpy<2.0.0",
+"numpy==1.26.3",
 "pandas",
 "matplotlib",
-"scipy",
+"scipy>=1.14",
 "jupyter",
 "ipython",
-
+"ipympl",
+"boost_histogram<1.5",
 ]
