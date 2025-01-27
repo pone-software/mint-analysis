@@ -1,14 +1,42 @@
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+exclude = ["sim_data", "data", "dspeed"]
+
+[tool.setuptools]
+py-modules = []
+
 [project]
-name = "testbench"
+name = "mint-analysis"
 version = "0.1.0"
-description = "Add your description here"
+description = "A software package for the analysis of data from the MINT deployment"
+authors = [
+    {name = "The P-One Collaboration"},
+]
+
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX",
+    "Operating System :: Unix",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Scientific/Engineering",
+]
 readme = "README.md"
 requires-python = ">=3.10, <3.13"
 dependencies = [
 "pygama>=2.0.0",
 "legend-daq2lh5>=1.2.1",
 "legend-pydataobj>=1.7",
-"numpy==1.26.3",
+"dspeed==1.6.2",
+"numpy==1.26.2",
+"numba>0.52",
 "pandas",
 "matplotlib",
 "scipy>=1.14",
@@ -16,4 +44,18 @@ dependencies = [
 "ipython",
 "ipympl",
 "boost_histogram<1.5",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest >=6",
+  "pytest-cov >=3",
+]
+docs = [
+  "sphinx>=7.0",
+  "myst_parser>=0.13",
+  "sphinx_inline_tabs",
+  "sphinx_copybutton",
+  "sphinx_autodoc_typehints",
+  "furo>=2023.08.17",
 ]
