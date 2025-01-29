@@ -53,4 +53,4 @@ Next steps
    :caption: Development
 
    developer
-   Source Code <https://github.com/p-one/mint-analysis>
+   Source Code <https://github.com/pone-software/mint-analysis>

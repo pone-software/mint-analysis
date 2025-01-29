@@ -21,8 +21,8 @@ where = ["src/mint_analysis"]
 write_to = "src/mint_analysis/_version.py"
 
 [project.urls]
-Homepage = "https://github.com/p-one/mint-analysis"
-Issues = "https://github.com/p-one/mint-analysis"
+Homepage = "https://github.com/pone-software/mint-analysis"
+Issues = "https://github.com/pone-software/mint-analysis/issues"
 
 
 [project]

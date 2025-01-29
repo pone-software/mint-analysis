@@ -17,7 +17,7 @@ apidoc: clean-apidoc
       --module-first \
       --force \
       --output-dir "$(SOURCEDIR)/api" \
-      ../src/mint_analysis
+      ../src/mint_analysis \
 
 clean-apidoc:
 	rm -rf "$(SOURCEDIR)/api"
