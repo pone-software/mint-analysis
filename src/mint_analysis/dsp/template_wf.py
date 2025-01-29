@@ -36,7 +36,7 @@ def build_template_waveform(
         raise ValueError("Upsample factor must be an integer")
 
     # Initialize extended arrays
-    wf_len = len(wfs_in.nda[0])
+    wf_len = len(wfs_in.values.nda[0])
     wf_extended = np.zeros(wf_len * upsample_factor)
     counts = np.zeros(wf_len * upsample_factor)
     base = np.arange(wf_len)
@@ -48,8 +48,8 @@ def build_template_waveform(
     indices = base * upsample_factor - shifts  # Shape (num_waveforms, wf_len)
 
     # Scatter-add values to wf_extended and counts
-    for i in range(wfs_in.shape[0]):
-        wf_extended[indices[i]] += wfs_in[i, :]
+    for i in range(len(wfs_in)):
+        wf_extended[indices[i]] += wfs_in.values.nda[i, :]
         counts[indices[i]] += np.ones(wf_len)
 
     start = int(t0_shift * upsample_factor)

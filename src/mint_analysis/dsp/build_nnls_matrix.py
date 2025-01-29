@@ -44,7 +44,7 @@ def build_nnls_matrix(
     out_len = wf_len * upsample_factor
 
     padded_template = np.zeros(out_len)
-    padded_template[: len(wf_template)] = wf_template
+    padded_template[: len(wf_template.values.nda[0])] = wf_template.values.nda[0]
 
     # Initialize A matrix , is it worth constraining so full template must be present?
     A_upsampled = hankel(padded_template[::-1], np.full(len(padded_template), 0))[::-1, :]
