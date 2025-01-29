@@ -1,21 +1,22 @@
 """
-This module contains helper functions for converting template functions into matrices for nnls fitting.
+This module contains helper functions for converting template
+functions into matrices for nnls fitting.
 """
 
 from __future__ import annotations
 
 import numpy as np
-from scipy.linalg import hankel
 from lgdo.types import WaveformTable
+from scipy.linalg import hankel
+
 
 def build_nnls_matrix(
     wf_template: WaveformTable, wf_len: int, wf_sampling: int
 ) -> tuple[np.ndarray, np.ndarray]:
-
     """
     This function builds the matrices needed for nnls fitting of a template to a waveform.
-    It returns 2 matrices the first is the A matrix that is used in the nnls fitting 
-    (with the downsampled template) and the second is the full A matrix that is used 
+    It returns 2 matrices the first is the A matrix that is used in the nnls fitting
+    (with the downsampled template) and the second is the full A matrix that is used
     to upsample the template.
 
     Parameters
@@ -26,7 +27,7 @@ def build_nnls_matrix(
         The length of the waveform to fit to.
     downsample_factor : int
         The factor by which to downsample the template.
-    
+
     Returns
     -------
     A : np.ndarray
@@ -39,7 +40,8 @@ def build_nnls_matrix(
     upsample_factor = template_sampling / wf_sampling
 
     if upsample_factor != int(upsample_factor):
-        raise ValueError("Template sampling rate is not a multiple of the waveform sampling rate")
+        msg = "Template sampling rate is not a multiple of the waveform sampling rate"
+        raise ValueError(msg)
 
     out_len = wf_len * upsample_factor
 

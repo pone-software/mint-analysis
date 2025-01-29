@@ -3,12 +3,13 @@ This module contains helper functions for pulse analysis.
 """
 
 from __future__ import annotations
+
 import numpy as np
 
 
 class pulse_analysis:
 
-    def find_new_t0(self, baseline:float, zres:np.array, x:np.array) -> dict:
+    def find_new_t0(self, baseline: float, zres: np.array, x: np.array) -> dict:
         integrals = {}
         shifted_res = zres - baseline
         multiply = shifted_res * np.roll(shifted_res, 1)
@@ -32,7 +33,7 @@ class pulse_analysis:
 
         return integrals
 
-    def error_on_fit(self, reco_t0:np.array, loc:np.array) -> list:
+    def error_on_fit(self, reco_t0: np.array, loc: np.array) -> list:
         # quantify the error on the fit
         error_on_fit = []
         error = 0
