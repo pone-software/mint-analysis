@@ -56,17 +56,22 @@ def build_template_waveform(
 
     start = int(t0_shift * upsample_factor)
     start_value = (wf_extended / counts)[start]
-    end = int(
-        np.ceil(
-            (np.where((wf_extended / counts)[start:] < start_value)[0][0] + start)
-            / upsample_factor
+    below_threshold = np.where((wf_extended / counts)[start:] < start_value)[0]
+
+    if len(below_threshold) == 0:
+        end = len(wf_extended)
+    else:
+        end = int(
+            np.ceil(
+                (np.where((wf_extended / counts)[start:] < start_value)[0][0] + start)
+                / upsample_factor
+            )
+            * upsample_factor
         )
-        * upsample_factor
-    )
 
     return WaveformTable(
-        values=[ArrayOfEqualSizedArrays(nda=wf_extended[start:end])],
-        dt=wfs_in.dt.nda[0][0] / upsample_factor,
+        values=ArrayOfEqualSizedArrays(nda=[wf_extended[start:end]]),
+        dt=wfs_in.dt.nda[0] / upsample_factor,
         t0=0,
         t0_units=wfs_in.t0_units,
     )
