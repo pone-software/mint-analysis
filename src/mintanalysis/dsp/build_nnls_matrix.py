@@ -25,8 +25,8 @@ def build_nnls_matrix(
         The waveform template to fit to the data.
     wf_len : int
         The length of the waveform to fit to.
-    downsample_factor : int
-        The factor by which to downsample the template.
+    wf_sampling : float
+        The sampling time of a single waveform.
 
     Returns
     -------
@@ -36,14 +36,14 @@ def build_nnls_matrix(
         The full A matrix used to upsample the template.
     """
 
-    template_sampling = wf_template.dt.nda[0][0]
-    upsample_factor = template_sampling / wf_sampling
+    template_sampling = wf_template.dt.nda[0]
+    upsample_factor = wf_sampling / template_sampling
 
     if upsample_factor != int(upsample_factor):
         msg = "Template sampling rate is not a multiple of the waveform sampling rate"
         raise ValueError(msg)
 
-    out_len = wf_len * upsample_factor
+    out_len = int(wf_len * upsample_factor)
 
     padded_template = np.zeros(out_len)
     padded_template[: len(wf_template.values.nda[0])] = wf_template.values.nda[0]

@@ -6,7 +6,7 @@ They should take in a WaveformTable and return a WaveformTable with a single wav
 from __future__ import annotations
 
 import numpy as np
-from lgdo.types import WaveformTable
+from lgdo.types import ArrayOfEqualSizedArrays, WaveformTable
 
 
 def build_template_waveform(
@@ -65,7 +65,8 @@ def build_template_waveform(
     )
 
     return WaveformTable(
-        nda=[wf_extended[start:end]],
-        dt=[np.full(len(wf_extended[start:end]), wfs_in.dt.nda[0][0] / upsample_factor)],
-        t0=[0],
+        values=[ArrayOfEqualSizedArrays(nda=wf_extended[start:end])],
+        dt=wfs_in.dt.nda[0][0] / upsample_factor,
+        t0=0,
+        t0_units=wfs_in.t0_units,
     )
