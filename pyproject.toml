@@ -65,9 +65,10 @@ dependencies = [
 "ipython",
 "ipympl",
 "boost_histogram<1.5",
-"dspeed @ file:///${PROJECT_ROOT}/dspeed",
-]
 #"dspeed==1.6.2",
+]
+
+#"dspeed @ file:///${PROJECT_ROOT}/dspeed",
 
 [project.optional-dependencies]
 test = [
