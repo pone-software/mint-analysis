@@ -1,7 +1,9 @@
-import pytest
 import numpy as np
-from lgdo.types import WaveformTable, ArrayOfEqualSizedArrays
+import pytest
+from lgdo.types import ArrayOfEqualSizedArrays, WaveformTable
+
 from mintanalysis.dsp.build_nnls_matrix import build_nnls_matrix
+
 
 def test_build_nnls_matrix_valid_input():
     wf_template = WaveformTable(
@@ -14,11 +16,11 @@ def test_build_nnls_matrix_valid_input():
 
     A, A_upsampled = build_nnls_matrix(wf_template, wf_len, wf_sampling)
 
-    assert A.shape == (5,10)
+    assert A.shape == (5, 10)
     assert A_upsampled.shape == (10, 10)
-    assert np.allclose(A_upsampled[:,1], [0., 1., 2., 3., 4., 5., 0., 0., 0., 0.])
-    assert np.allclose(A[:,1], [0., 2., 4., 0., 0.])
-    
+    assert np.allclose(A_upsampled[:, 1], [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 0.0, 0.0, 0.0, 0.0])
+    assert np.allclose(A[:, 1], [0.0, 2.0, 4.0, 0.0, 0.0])
+
 
 def test_build_nnls_matrix_invalid_upsample_factor():
     wf_template = WaveformTable(
@@ -29,8 +31,11 @@ def test_build_nnls_matrix_invalid_upsample_factor():
     wf_len = 5
     wf_sampling = 2
 
-    with pytest.raises(ValueError, match="Template sampling rate is not a multiple of the waveform sampling rate"):
+    with pytest.raises(
+        ValueError, match="Template sampling rate is not a multiple of the waveform sampling rate"
+    ):
         build_nnls_matrix(wf_template, wf_len, wf_sampling)
+
 
 def test_build_nnls_matrix_zero_padding():
     wf_template = WaveformTable(
