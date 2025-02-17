@@ -1,0 +1,59 @@
+src/mintanalysis/_version.py
+
+# New additions go at the top!
+*.c
+.DS_Store
+*.npz
+*.pdf
+*.swp
+*.root
+*.h5
+*.lh5
+*~
+*.csv
+
+# uv
+uv.lock
+
+# misc
+.vscode
+*.pyc
+node_modules
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# dspeed
+dspeed
