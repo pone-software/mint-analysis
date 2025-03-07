@@ -5,20 +5,19 @@ import numpy as np
 
 # LEGEND specific imports
 from dspeed import build_dsp
-import dspeed_config_PONE_1 as config
 from lgdo import lh5, WaveformTable, Table, ArrayOfEqualSizedArrays, Array
+import dspeed_config_PONE_1 as config
 
 # Load the .py config as a module
 config_file = "dspeed_config_PONE_1.py"
 spec = importlib.util.spec_from_file_location("config", config_file)
 config_module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(config_module)
-# Access the config dictionary 
+# Access the config dictionary
 dsp_config = config_module.config
 
 # Functions
 def build_raw(RAW_PATH: str, lh5_file: str, signal: dict):
-
     """
     Gets data converted to lh5 and dumps it into Pygama format.
 
@@ -30,22 +29,18 @@ def build_raw(RAW_PATH: str, lh5_file: str, signal: dict):
     Returns:
         f_raw : table - Output of Pygama converted file.
     """
-        
     f_raw = RAW_PATH + lh5_file
     for k in signal.items():
-    
-        a = ArrayOfEqualSizedArrays(nda=np.array(signal[k],dtype=np.uint16))
-        b = WaveformTable(values=a,dt=5,dt_units="ns",t0=0,t0_units="ns")
-        
+        a = ArrayOfEqualSizedArrays(nda=np.array(signal[k], dtype=np.uint16))
+        b = WaveformTable(values=a, dt=5, dt_units="ns", t0=0, t0_units="ns")
         # add everything into a lh5 structure and write it to disk
         table = Table(size=len(b))
-        table.add_field("waveform",b,True)
-        lh5.write(table,name="raw",group=k,lh5_file=f_raw)
+        table.add_field("waveform", b, True)
+        lh5.write(table, name="raw", group=k, lh5_file=f_raw)
 
     return f_raw
-    
-def database(A: np.ndarray, A_upsampled: np.ndarray, out_len: int, channel_name_1: str, channel_name_2 : str):
 
+def database(A: np.ndarray, A_upsampled: np.ndarray, out_len: int, channel_name_1: str, channel_name_2: str):
     """
     Database storing values of the matrices for nnls processor.
 
@@ -59,23 +54,22 @@ def database(A: np.ndarray, A_upsampled: np.ndarray, out_len: int, channel_name_
     Returns:
         f_dsp : table - Output of dspeed converted file.
     """
-
-    return {channel_name_1 : {
+    return {
+        channel_name_1: {
             "coefficient_matrix": A,
             "upsampled_matrix": A_upsampled.T,
             "solution_vector_length": out_len,
             "solution_vector_resolution_in_ns": 1,
         },
-        channel_name_2 : {
+        channel_name_2: {
             "coefficient_matrix": A,
             "upsampled_matrix": A_upsampled.T,
             "solution_vector_length": out_len,
             "solution_vector_resolution_in_ns": 1,
         }
-        }
-    
-def config_dsp(RAW_PATH: str, f_raw: dict, database : dict):
-    
+    }
+
+def config_dsp(RAW_PATH: str, f_raw: dict, database: dict):
     """
     Configures your dspeed based on raw lh5 input.
 
@@ -85,15 +79,14 @@ def config_dsp(RAW_PATH: str, f_raw: dict, database : dict):
     Returns:
         f_dsp : table - Output of dspeed converted file.
     """
-
-    f_raw = glob.glob(RAW_PATH+"*")
+    f_raw = glob.glob(RAW_PATH + "*")
     for f in f_raw:
-        f_dsp = f.replace("raw","dsp")
+        f_dsp = f.replace("raw", "dsp")
         build_dsp(
             f_raw=f,
             f_dsp=f_dsp,
             dsp_config=dsp_config,
-            database = database,
+            database=database,
             write_mode="o",
         )
 
