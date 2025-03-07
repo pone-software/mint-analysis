@@ -60,15 +60,14 @@ def database(A: np.ndarray, A_upsampled: np.ndarray, out_len: int, channel_name_
         A:              np.ndarray - Base matrix (m,n).
         A_upsampled:    np.ndarray - Upsampled Matrix (n,n).
         out_len:        int - Length of out vector (n).
-        channel_name_1: str - name of your channel 1
-        channel_name_2: str - name of your channel 2
+        channel_name_1: str - name of your channel 1.
+        channel_name_2: str - name of your channel 2.
 
     Returns:
         f_dsp : table - Outout of dspeed converted file.
     """
 
-    db_dict = {
-        channel_name_1 : {
+    return {channel_name_1 : {
             "coefficient_matrix": A,
             "upsampled_matrix": A_upsampled.T,
             "solution_vector_length": out_len,
@@ -80,8 +79,7 @@ def database(A: np.ndarray, A_upsampled: np.ndarray, out_len: int, channel_name_
             "solution_vector_length": out_len,
             "solution_vector_resolution_in_ns": 1,
         }
-    }
-    return db_dict
+        }
     
 def config_dsp(RAW_PATH: str, f_raw: dict, database : dict):
     
