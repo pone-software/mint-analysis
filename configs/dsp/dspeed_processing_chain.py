@@ -1,25 +1,19 @@
-# Imports
-
 # MISC
+import glob
+import importlib.util
 import numpy as np
 import awkward as ak
-import glob
-import numba as nb
-import importlib.util
-from numba import guvectorize
+
 # LEGEND specific imports
-import dspeed_config_PONE_1 as config
-from dspeed.utils import numba_defaults_kwargs as nb_kwargs
-from lgdo import lh5, VectorOfVectors, WaveformTable, Table, ArrayOfEqualSizedArrays, Array
-from lgdo.lh5 import LH5Store
 from dspeed import build_dsp
+import dspeed_config_PONE_1 as config
+from lgdo import lh5, VectorOfVectors, WaveformTable, Table, ArrayOfEqualSizedArrays, Array
 
 # Load the .py config as a module
 config_file = "dspeed_config_PONE_1.py"
 spec = importlib.util.spec_from_file_location("config", config_file)
 config_module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(config_module)
-
 # Access the config dictionary 
 dsp_config = config_module.config
 
@@ -35,7 +29,7 @@ def build_raw(RAW_PATH: str, lh5_file: str, signal: dict):
         signal:   dict - Empty dictionary to store channel data.
 
     Returns:
-        f_raw : table - Outout of Pygama converted file.
+        f_raw : table - Output of Pygama converted file.
     """
         
     f_raw = RAW_PATH + lh5_file
@@ -64,7 +58,7 @@ def database(A: np.ndarray, A_upsampled: np.ndarray, out_len: int, channel_name_
         channel_name_2: str - name of your channel 2.
 
     Returns:
-        f_dsp : table - Outout of dspeed converted file.
+        f_dsp : table - Output of dspeed converted file.
     """
 
     return {channel_name_1 : {
@@ -90,7 +84,7 @@ def config_dsp(RAW_PATH: str, f_raw: dict, database : dict):
         RAW_PATH: str - Path to lh5 converted file.
 
     Returns:
-        f_dsp : table - Outout of dspeed converted file.
+        f_dsp : table - Output of dspeed converted file.
     """
 
     f_raw = glob.glob(RAW_PATH+"*")
