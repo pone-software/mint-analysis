@@ -43,7 +43,7 @@ def build_raw(RAW_PATH: str, lh5_file: str, signal: dict):
     """
         
     f_raw = RAW_PATH + lh5_file
-    for k in signal.keys():
+    for k in signal.items():
     
         a = ArrayOfEqualSizedArrays(nda=np.array(signal[k],dtype=np.uint16))
         b = WaveformTable(values=a,dt=5,dt_units="ns",t0=0,t0_units="ns")
@@ -55,35 +55,37 @@ def build_raw(RAW_PATH: str, lh5_file: str, signal: dict):
 
     return f_raw
     
-def database(A: np.ndarray, A_upsampled: np.ndarray, out_len: int):
+def database(A: np.ndarray, A_upsampled: np.ndarray, out_len: int, channel_name_1: str, channel_name_2 : str):
 
     """
     Database storing values of the matrices for nnls processor.
 
     Parameters:
-        A:           np.ndarray - Base matrix (m,n).
-        A_upsampled: np.ndarray - Upsampled Matrix (n,n).
-        out_len:     int - Length of out vector (n).
+        A:              np.ndarray - Base matrix (m,n).
+        A_upsampled:    np.ndarray - Upsampled Matrix (n,n).
+        out_len:        int - Length of out vector (n).
+        channel_name_1: str - name of your channel 1
+        channel_name_2: str - name of your channel 2
 
     Returns:
         f_dsp : table - Outout of dspeed converted file.
     """
 
     db_dict = {
-        "ch002": {
+        channel_name_1 : {
             "coefficient_matrix": A,
             "upsampled_matrix": A_upsampled.T,
             "solution_vector_length": out_len,
             "solution_vector_resolution_in_ns": 1,
         },
-        "ch013": {
+        channel_name_2 : {
             "coefficient_matrix": A,
             "upsampled_matrix": A_upsampled.T,
             "solution_vector_length": out_len,
             "solution_vector_resolution_in_ns": 1,
         }
     }
-    return database
+    return db_dict
     
 def config_dsp(RAW_PATH: str, f_raw: dict, database : dict):
     
@@ -104,7 +106,7 @@ def config_dsp(RAW_PATH: str, f_raw: dict, database : dict):
             f_raw=f,
             f_dsp=f_dsp,
             dsp_config=dsp_config,
-            database = db_dict,
+            database = database,
             write_mode="o",
         )
 
