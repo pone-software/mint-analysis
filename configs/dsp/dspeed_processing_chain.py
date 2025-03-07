@@ -4,13 +4,9 @@
 import numpy as np
 import awkward as ak
 import glob
-from fastapi import FastAPI
-from typing import List
-from fastapi.responses import FileResponse
 import numba as nb
-from numba import guvectorize
 import importlib.util
-
+from numba import guvectorize
 # LEGEND specific imports
 import dspeed_config_PONE_1 as config
 from dspeed.utils import numba_defaults_kwargs as nb_kwargs
