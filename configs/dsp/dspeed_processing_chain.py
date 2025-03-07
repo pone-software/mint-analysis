@@ -2,12 +2,11 @@
 import glob
 import importlib.util
 import numpy as np
-import awkward as ak
 
 # LEGEND specific imports
 from dspeed import build_dsp
 import dspeed_config_PONE_1 as config
-from lgdo import lh5, VectorOfVectors, WaveformTable, Table, ArrayOfEqualSizedArrays, Array
+from lgdo import lh5, WaveformTable, Table, ArrayOfEqualSizedArrays, Array
 
 # Load the .py config as a module
 config_file = "dspeed_config_PONE_1.py"
