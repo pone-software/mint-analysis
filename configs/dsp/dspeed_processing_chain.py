@@ -1,12 +1,12 @@
 # MISC
 import glob
 import importlib.util
+
 import numpy as np
 
 # LEGEND specific imports
 from dspeed import build_dsp
-from lgdo import lh5, WaveformTable, Table, ArrayOfEqualSizedArrays, Array
-import dspeed_config_PONE_1 as config
+from lgdo import ArrayOfEqualSizedArrays, Table, WaveformTable, lh5
 
 # Load the .py config as a module
 config_file = "dspeed_config_PONE_1.py"
@@ -15,6 +15,7 @@ config_module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(config_module)
 # Access the config dictionary
 dsp_config = config_module.config
+
 
 # Functions
 def build_raw(RAW_PATH: str, lh5_file: str, signal: dict):
@@ -40,7 +41,10 @@ def build_raw(RAW_PATH: str, lh5_file: str, signal: dict):
 
     return f_raw
 
-def database(A: np.ndarray, A_upsampled: np.ndarray, out_len: int, channel_name_1: str, channel_name_2: str):
+
+def database(
+    A: np.ndarray, A_upsampled: np.ndarray, out_len: int, channel_name_1: str, channel_name_2: str
+):
     """
     Database storing values of the matrices for nnls processor.
 
@@ -66,8 +70,9 @@ def database(A: np.ndarray, A_upsampled: np.ndarray, out_len: int, channel_name_
             "upsampled_matrix": A_upsampled.T,
             "solution_vector_length": out_len,
             "solution_vector_resolution_in_ns": 1,
-        }
+        },
     }
+
 
 def config_dsp(RAW_PATH: str, f_raw: dict, database: dict):
     """
