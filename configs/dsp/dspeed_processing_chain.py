@@ -25,7 +25,7 @@ def build_raw(RAW_PATH: str, lh5_file: str, signal: dict):
     Parameters:
         RAW_PATH: str - Path to raw converted file.
         lh5_file: str - Path to lh5 converted file.
-        signal:   dict - Empty dictionary to store channel data.
+        signal:   dict - Dictionary of stored channel data.
 
     Returns:
         f_raw : table - Output of Pygama converted file.
