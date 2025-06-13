@@ -11,7 +11,7 @@ INTERPOSER_TEST=True
 ADC_TEST=True
 
 DATABASE_ACTIVE = True
-PMT_SUB=False
+PMT_SUB=False #Flag to select if only a subset of PMT should be turn on
 PMT_LIST_H1=np.array([1,2,3,4,5,6,7,8])
 PMT_LIST_H2=np.array([1,2,3,4,5,6,7,8])
 
@@ -21,7 +21,11 @@ HS_SCAN=True
 FLASHER_TEST=False
 ACCOUSTIC_TEST=False
 
-PCAL=False
+MIST_TEST=False
+CAMERA_TEST=False
+
+PCAL=False #Maybe we don't need it 
+
 
 SJB=False
 

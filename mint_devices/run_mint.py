@@ -3,6 +3,7 @@ from perseus.client import PerseusClient
 from perseus.control.interposer import Interposer
 from perseus.control.ubase import uBase
 import interface.interposer_interface as inter 
+import interface.mist_interface as mist
 import interface.adc_interface as adc
 import time
 import numpy as np
@@ -13,6 +14,9 @@ c = PerseusClient("192.168.127.111:12346")
 c.attach("interpi", 'interposer.Interposer', gpiodev="gpiochip0", gpio_reset=1, 
 gpio_A0=6, gpio_A1=12, gpio_A2=13, spidev="/dev/spidev0.0", 
 serialdev="/dev/serial0") #Connect to the interposer, this imply that a server is running on port 123456
+
+#Need to connect to another interposer to test this 
+
 print("Initializing interposer")
 for attempt in range(3):
         try:
@@ -24,6 +28,7 @@ for attempt in range(3):
         if attempt == 1:
             print("All attempts failed. Raising exception.")
             raise  # Raise the exception on final failure
+
 if config.INTERPOSER_TEST: 
         inter.funtionality_test(c.interpi)
 if config.FLASH_UBASE==True:
@@ -48,6 +53,8 @@ elif config.FLASHER_TEST:
         flasher.test_functionality()
 elif config.ACCOUSTIC_TEST:
         accoustic.test_functionality()
+elif config.MIST_test:
+        mist.test_functionality()
 
 
 

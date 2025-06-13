@@ -1,0 +1,1 @@
+#Code needed to run a basic functionality test of the mainboard before running anything more. 
