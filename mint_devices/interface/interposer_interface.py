@@ -135,16 +135,31 @@ def flash_ubase(inter):
     finally:
         client.close()
 
-def turn_on_hv(inter,hemisphere_id=None,hv=False):
+def turn_on_hv(inter,hemisphere_id=None,db=True):
     """
     Function to turn on the HV of the different hemisphere at the correct voltage 
     """
-    if hv==True:
+    if db==False:
         for j in range(0,8):
             inter.ubase[j].quick_scan(85)
     else:
         measurement_db = db_Measurement()
         for i in range(1,9):
+            PMT_name, _id = measurement_db.get_PMT_from_position(hemisphere_id, str(i), "Devices")
+            print("Finding the right voltage for each",PMT_name)
+            nominal_HV = measurement_db.get_PMT_data(PMT_name, "Nominal voltage", "Hamamatsu", "Measurements_Pmt")
+            print("Nominal voltage found in database is ", nominal_HV)
+            inter.ubase[correspondance(i)].quick_scan(nominal_HV)
+def turn_on_hv_subset(inter,PMT_list,hemisphere_id=None,db=True):
+    """
+    Function to turn on the HV of a set of PMT
+    """
+    if db==False:
+        for j in PMT_list:
+            inter.ubase[correspondance(j)].quick_scan(85)
+    else:
+        measurement_db = db_Measurement()
+        for i in PMT_list:
             PMT_name, _id = measurement_db.get_PMT_from_position(hemisphere_id, str(i), "Devices")
             print("Finding the right voltage for each",PMT_name)
             nominal_HV = measurement_db.get_PMT_data(PMT_name, "Nominal voltage", "Hamamatsu", "Measurements_Pmt")
