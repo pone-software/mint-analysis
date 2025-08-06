@@ -21,27 +21,33 @@ class acoustics:
     ###############################################################################
     # mainboard Connection
 
-    def __init__(
-        self, output_dir, tag, pi_output, debug=False, osci_address="11.102.0.106"
-    ):
-        self.mainboard_ip = "11.102.1.1"
+    def __init__(self, **kwargs):
+        """
+        Required input arguments:
+            - mainboard_ip
+            - output_dir
+        """
         self.time_str = datetime.datetime.now().isoformat("_")[:-7].replace(":", "")
-        self.output_dir = "./"
 
+        # Configure from midas sequencer in kwargs
+        # Mainboard IP "11.102.1.1"
+        self.debug = kwargs["debug"]
+        self.mainboard_ip = kwargs["mainboard_ip"]
+        self.output_dir = kwargs["output_dir"]
+        self.tag = kwargs["tag"]
+        self.output_dir = os.path.join(self.output_dir, self.tag)
+        if not os.path.exists(self.output_dir):
+            os.makedirs(self.output_dir)
+
+        # Hardcoded?
         self.t_record = None
         self.process_response = None
         self.default_gain = 1
         self.adc_status = False
 
-        self.perseus = ModuleClient(self.mainboard_ip)
-
-        self.debug = debug
-        self.output_dir = os.path.join(output_dir, tag)
-        self.tag = tag
-        self.rtm = RTM3004(device=osci_address)
-
-        if not os.path.exists(self.output_dir):
-            os.makedirs(self.output_dir)
+        # osci_address "11.102.0.106"
+        self.rtm = RTM3004(device=kwargs["osci_address"])
+        self.module = ModuleClient(self.mainboard_ip)
 
         self.logger = logging.getLogger(__name__)
 
@@ -87,7 +93,8 @@ class acoustics:
     def osci_on(self, amp_V):
         self.rtm.toggleWaveform(status="ON")
         self.rtm.setWaveFunction("SIN")
-        self.rtm.setWaveVoltage(amp=amp_V)  # in Volts
+        # set in volts
+        self.rtm.setWaveVoltage(amp=amp_V)
         self.rtm.setWaveVoltOffset(0)
         self.rtm.toggleWaveformBurst(status="OFF")
 
@@ -100,57 +107,57 @@ class acoustics:
             gain_1 = self.default_gain
         if not gain_2:
             gain_2 = self.default_gain
-        self.perseus.interposer_a.SetAcousticState(True, gain_1, gain_2)
-        self.perseus.interposer_b.SetAcousticState(True, gain_1, gain_2)
+        self.module.interposer_a.SetAcousticState(True, gain_1, gain_2)
+        self.module.interposer_b.SetAcousticState(True, gain_1, gain_2)
 
     def disable(self):
-        self.perseus.interposer_a.SetAcousticState(
+        self.module.interposer_a.SetAcousticState(
             False, self.default_gain, self.default_gain
         )
-        self.perseus.interposer_b.SetAcousticState(
+        self.module.interposer_b.SetAcousticState(
             False, self.default_gain, self.default_gain
         )
 
     def adc_enable(self):
         # if self.adc_status:
         # return
-        self.perseus.acoustic.initialize()
+        self.module.acoustic.initialize()
         time.sleep(0.1)
-        self.perseus.acoustic.set_active()
+        self.module.acoustic.set_active()
         time.sleep(0.1)
-        self.perseus.acoustic.set_output_config(0, 2, 0, 0, 0, 0)
+        self.module.acoustic.set_output_config(0, 2, 0, 0, 0, 0)
         time.sleep(0.1)
-        self.perseus.acoustic.set_communication(6, 5)
+        self.module.acoustic.set_communication(6, 5)
         time.sleep(0.1)
-        self.perseus.acoustic.set_clock_source()
-        time.sleep(0.1)
-
-        self.perseus.acoustic.set_channel_slot(1, 0, 0)
-        self.perseus.acoustic.set_channel_slot(2, 0, 1)
+        self.module.acoustic.set_clock_source()
         time.sleep(0.1)
 
-        self.perseus.acoustic.set_gain(1, 1)
-        self.perseus.acoustic.set_gain(2, 1)
+        self.module.acoustic.set_channel_slot(1, 0, 0)
+        self.module.acoustic.set_channel_slot(2, 0, 1)
         time.sleep(0.1)
 
-        self.perseus.acoustic.set_input_config(0, 1, 1, 0, 1, 1)
-        self.perseus.acoustic.set_input_config(0, 1, 1, 0, 1, 2)
+        self.module.acoustic.set_gain(1, 1)
+        self.module.acoustic.set_gain(2, 1)
         time.sleep(0.1)
 
-        self.perseus.acoustic.set_dynamic_range_enhancer(0, 11, False)
+        self.module.acoustic.set_input_config(0, 1, 1, 0, 1, 1)
+        self.module.acoustic.set_input_config(0, 1, 1, 0, 1, 2)
         time.sleep(0.1)
 
-        self.perseus.acoustic.set_input_enable(1, True)
-        self.perseus.acoustic.set_input_enable(2, True)
+        self.module.acoustic.set_dynamic_range_enhancer(0, 11, False)
         time.sleep(0.1)
 
-        self.perseus.acoustic.set_output_enable(1, True)
-        self.perseus.acoustic.set_output_enable(2, True)
+        self.module.acoustic.set_input_enable(1, True)
+        self.module.acoustic.set_input_enable(2, True)
         time.sleep(0.1)
 
-        self.perseus.acoustic.get_status()
+        self.module.acoustic.set_output_enable(1, True)
+        self.module.acoustic.set_output_enable(2, True)
+        time.sleep(0.1)
 
-        self.perseus.acoustic.set_adc_power(False, True, 0, 0)
+        self.module.acoustic.get_status()
+
+        self.module.acoustic.set_adc_power(False, True, 0, 0)
 
         # self.adc_status = True
 
