@@ -7,7 +7,6 @@ import subprocess
 import numpy as np
 import h5py as hp
 from optparse import OptionParser
-import logging
 
 from perseus.client import ModuleClient
 from RTM3004 import RTM3004
@@ -26,6 +25,10 @@ class acoustics:
         Required input arguments:
             - mainboard_ip
             - output_dir
+            - tag
+            - debug
+
+        kwargs used in case extra arguments are folded into this function.
         """
         self.time_str = datetime.datetime.now().isoformat("_")[:-7].replace(":", "")
 
@@ -48,33 +51,7 @@ class acoustics:
         # osci_address "11.102.0.106"
         self.rtm = RTM3004(device=kwargs["osci_address"])
         self.module = ModuleClient(self.mainboard_ip)
-
-        self.logger = logging.getLogger(__name__)
-
-        if self.debug:
-            logging.basicConfig(
-                filename=os.path.join(self.output_dir, "calibration.log"),
-                encoding="utf-8",
-                level=logging.DEBUG,
-            )
-        else:
-            logging.basicConfig(
-                filename=os.path.join(self.output_dir, "calibration.log"),
-                encoding="utf-8",
-                level=logging.INFO,
-            )
-
-    def log_info(self, message):
-        self.logger.info(message)
-
-    def log_warning(self, message):
-        self.logger.warning(message)
-
-    def log_error(self, message):
-        self.logger.error(message)
-
-    def log_debug(self, message):
-        self.logger.debug(message)
+        self.seq = kwargs["seq"]
 
     def set_record_time(self, time):
         self.t_record = time
@@ -174,8 +151,7 @@ class acoustics:
         if not gain_per_stage:
             gain_per_stage = self.default_gain
 
-        self.log_info("--- Running Sweep ---")
-        self.log_info(f"--- Start {start_f_hz} to {end_f_hz} ---")
+        self.seq.msg(f"Runing acoustic sweep from {start_f_hz} to {end_f_hz} Hz.")
         self.rtm.reset()
         offset = 3
         self.set_record_time(run_t_s + offset)
@@ -219,8 +195,7 @@ class acoustics:
         # reset scope
         self.rtm.reset()
 
-        self.log_info("--- Running Burst Sweep ---")
-        self.log_info(f"--- Start {start_f_hz} to {end_f_hz} ---")
+        self.seq.msg(f"Runing acoustic burst sweep from {start_f_hz} to {end_f_hz} Hz.")
         self.rtm.reset()
         self.set_record_time(total_time + 5)
 
@@ -249,8 +224,7 @@ class acoustics:
 
     def sanityCheckRTM(self, record=True, gains_per_stage=[1, 2, 4], amp_V=0.01):
         # reset scope
-        self.log_info("--- Running Sanity check! ---")
-        self.log_info("--- 3 frequencies [10,30,50] kHz ---")
+        self.seq.msg(f"Runing acoustic sanity check at 10, 30, and 50 kHz.")
         self.rtm.reset()
         time.sleep(1)
         self.set_record_time(40)
@@ -278,7 +252,7 @@ class acoustics:
 
     def singleFreqRun(self, record=True, freq=10e3, gain_per_stage=1, amp_V=0.01):
         # reset scope
-        self.log_info("--- Running Single Frequency check! ---")
+        self.seq.msg(f"Running single frequency check at {freq}.")
         self.rtm.reset()
         time.sleep(1)
         self.set_record_time(30)
@@ -296,7 +270,7 @@ class acoustics:
 
     def backgroundRun(self, record=True, amp_V=0.01):
         # reset scope
-        self.log_info("--- Running Background test! ---")
+        self.seq.msg(f"Runing acoustic acoustic background check.")
         self.rtm.reset()
         time.sleep(1)
         gainlist_per_stage = [1, 2, 4, 8, 16, 32]
