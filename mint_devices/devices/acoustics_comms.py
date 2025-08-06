@@ -12,17 +12,21 @@ import logging
 from perseus.client import ModuleClient
 from RTM3004 import RTM3004
 
+
 class acoustics:
     """A class to record data on the mainboard over perseus with the audio TLV320ADC6140"""
+
     ###############################################################################
     # PARAMETERS
     ###############################################################################
     # mainboard Connection
-    
-    def __init__(self, output_dir, tag, pi_output, debug = False, osci_address = "11.102.0.106"):
-        self.mainboard_ip   = '11.102.1.1'
-        self.time_str       = datetime.datetime.now().isoformat('_')[:-7].replace(':', '')
-        self.output_dir     = './'
+
+    def __init__(
+        self, output_dir, tag, pi_output, debug=False, osci_address="11.102.0.106"
+    ):
+        self.mainboard_ip = "11.102.1.1"
+        self.time_str = datetime.datetime.now().isoformat("_")[:-7].replace(":", "")
+        self.output_dir = "./"
 
         self.t_record = None
         self.process_response = None
@@ -30,23 +34,30 @@ class acoustics:
         self.adc_status = False
 
         self.perseus = ModuleClient(self.mainboard_ip)
-        
+
         self.debug = debug
         self.output_dir = os.path.join(output_dir, tag)
         self.tag = tag
         self.rtm = RTM3004(device=osci_address)
-        
+
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
 
         self.logger = logging.getLogger(__name__)
-        
-        if self.debug:
-            logging.basicConfig(filename=os.path.join(self.output_dir,'calibration.log'), encoding='utf-8', level=logging.DEBUG)
-        else:
-            logging.basicConfig(filename=os.path.join(self.output_dir,'calibration.log'), encoding='utf-8', level=logging.INFO)
 
-            
+        if self.debug:
+            logging.basicConfig(
+                filename=os.path.join(self.output_dir, "calibration.log"),
+                encoding="utf-8",
+                level=logging.DEBUG,
+            )
+        else:
+            logging.basicConfig(
+                filename=os.path.join(self.output_dir, "calibration.log"),
+                encoding="utf-8",
+                level=logging.INFO,
+            )
+
     def log_info(self, message):
         self.logger.info(message)
 
@@ -65,18 +76,18 @@ class acoustics:
     def return_record_time(self):
         return self.t_record
 
-    def startRecording(self, fname, ag=[0,0,0,0]):
+    def startRecording(self, fname, ag=[0, 0, 0, 0]):
         output_file = os.path.join(self.output_dir, fname)
         if self.t_record == None:
             raise ValueError("Run time was not assigned to t_record.")
-        cmd = ''  # Some command for setting the listen port and reading into binary then converting. Converting can be done in post before analysis
+        cmd = ""  # Some command for setting the listen port and reading into binary then converting. Converting can be done in post before analysis
         time.sleep(3)
         return output_file
 
     def osci_on(self, amp_V):
         self.rtm.toggleWaveform(status="ON")
-        self.rtm.setWaveFunction('SIN')
-        self.rtm.setWaveVoltage(amp = amp_V) # in Volts
+        self.rtm.setWaveFunction("SIN")
+        self.rtm.setWaveVoltage(amp=amp_V)  # in Volts
         self.rtm.setWaveVoltOffset(0)
         self.rtm.toggleWaveformBurst(status="OFF")
 
@@ -84,24 +95,32 @@ class acoustics:
         self.rtm.toggleWaveform(status="OFF")
         self.rtm.stopAquisition()
 
-    def enable(self, gain_1 = self.default_gain, gain_2 = self.default_gain):
+    def enable(self, gain_1=None, gain_2=None):
+        if not gain_1:
+            gain_1 = self.default_gain
+        if not gain_2:
+            gain_2 = self.default_gain
         self.perseus.interposer_a.SetAcousticState(True, gain_1, gain_2)
         self.perseus.interposer_b.SetAcousticState(True, gain_1, gain_2)
 
     def disable(self):
-        self.perseus.interposer_a.SetAcousticState(False, self.default_gain, self.default_gain)
-        self.perseus.interposer_b.SetAcousticState(False, self.default_gain, self.default_gain)
+        self.perseus.interposer_a.SetAcousticState(
+            False, self.default_gain, self.default_gain
+        )
+        self.perseus.interposer_b.SetAcousticState(
+            False, self.default_gain, self.default_gain
+        )
 
     def adc_enable(self):
-        #if self.adc_status:
-            #return 
+        # if self.adc_status:
+        # return
         self.perseus.acoustic.initialize()
         time.sleep(0.1)
         self.perseus.acoustic.set_active()
         time.sleep(0.1)
-        self.perseus.acoustic.set_output_config(0,2,0,0,0,0)
+        self.perseus.acoustic.set_output_config(0, 2, 0, 0, 0, 0)
         time.sleep(0.1)
-        self.perseus.acoustic.set_communication(6,5)
+        self.perseus.acoustic.set_communication(6, 5)
         time.sleep(0.1)
         self.perseus.acoustic.set_clock_source()
         time.sleep(0.1)
@@ -110,14 +129,14 @@ class acoustics:
         self.perseus.acoustic.set_channel_slot(2, 0, 1)
         time.sleep(0.1)
 
-        self.perseus.acoustic.set_gain(1,1)
-        self.perseus.acoustic.set_gain(2,1)
+        self.perseus.acoustic.set_gain(1, 1)
+        self.perseus.acoustic.set_gain(2, 1)
         time.sleep(0.1)
 
-        self.perseus.acoustic.set_input_config(0,1,1,0,1,1)
-        self.perseus.acoustic.set_input_config(0,1,1,0,1,2)
+        self.perseus.acoustic.set_input_config(0, 1, 1, 0, 1, 1)
+        self.perseus.acoustic.set_input_config(0, 1, 1, 0, 1, 2)
         time.sleep(0.1)
-        
+
         self.perseus.acoustic.set_dynamic_range_enhancer(0, 11, False)
         time.sleep(0.1)
 
@@ -131,11 +150,23 @@ class acoustics:
 
         self.perseus.acoustic.get_status()
 
-        self.persues.acoustic.set_adc_power(False, True, 0, 0)
-        
-        #self.adc_status = True
+        self.perseus.acoustic.set_adc_power(False, True, 0, 0)
 
-    def sweepRTM(self, start_f_hz = 10e3, end_f_hz = 50e3, sweep_t_s = 5, run_t_s = 15, record=True, amp_V=0.01, gain_per_stage=self.default_gain):
+        # self.adc_status = True
+
+    def sweepRTM(
+        self,
+        start_f_hz=10e3,
+        end_f_hz=50e3,
+        sweep_t_s=5,
+        run_t_s=15,
+        record=True,
+        amp_V=0.01,
+        gain_per_stage=None,
+    ):
+        if not gain_per_stage:
+            gain_per_stage = self.default_gain
+
         self.log_info("--- Running Sweep ---")
         self.log_info(f"--- Start {start_f_hz} to {end_f_hz} ---")
         self.rtm.reset()
@@ -144,28 +175,41 @@ class acoustics:
         self.enable(gain_per_stage, gain_per_stage)
 
         if record:
-            self.start_recording(f'sweep_gain{gain_per_stage**2}')
-        
-        self.osci_on(amp_V = amp_V)
+            self.start_recording(f"sweep_gain{gain_per_stage**2}")
+
+        self.osci_on(amp_V=amp_V)
         self.rtm.setWaveVoltFrequency(freq=1e3)
 
-        self.rtm.setSweepTime(sweep_t_s)        
+        self.rtm.setSweepTime(sweep_t_s)
         self.rtm.setStartFreqSweep(start_f_hz)
         self.rtm.setEndFreqSweep(end_f_hz)
-        self.rtm.setSweepType(style='LIN')        
-        self.rtm.toggleSweep(toggle='ON')
+        self.rtm.setSweepType(style="LIN")
+        self.rtm.toggleSweep(toggle="ON")
 
-        time.sleep(run_t_s)        
-        self.rtm.toggleSweep(toggle='OFF')
+        time.sleep(run_t_s)
+        self.rtm.toggleSweep(toggle="OFF")
         self.osci_off()
         time.sleep(offset)
 
-        #self.wait_for_raspi() # << Something equivalent for the mainboard? 
+        # self.wait_for_raspi() # << Something equivalent for the mainboard?
 
-    def burstSweepRTM(self, start_f_hz = 10e3, end_f_hz = 50e3, steps = 10, cycles = 20, per_step_time = 10, record=True, amp_V = 0.01, gain_per_stage=self.default_gain):
+    def burstSweepRTM(
+        self,
+        start_f_hz=10e3,
+        end_f_hz=50e3,
+        steps=10,
+        cycles=20,
+        per_step_time=10,
+        record=True,
+        amp_V=0.01,
+        gain_per_stage=None,
+    ):
+        if not gain_per_stage:
+            gain_per_stage = self.default_gain
+
         freq_range = np.linspace(start_f_hz, end_f_hz, steps)
-        total_time = per_step_time*steps
-        # reset scope        
+        total_time = per_step_time * steps
+        # reset scope
         self.rtm.reset()
 
         self.log_info("--- Running Burst Sweep ---")
@@ -173,30 +217,30 @@ class acoustics:
         self.rtm.reset()
         self.set_record_time(total_time + 5)
 
-        self.osci_on(amp_V = amp_V)
+        self.osci_on(amp_V=amp_V)
         self.rtm.setWaveVoltFrequency(freq=1e3)
-        self.rtm.toggleSweep(toggle='OFF')
+        self.rtm.toggleSweep(toggle="OFF")
         self.enable(gain_per_stage, gain_per_stage)
 
         if record:
-            self.startRecording(f'burst_sweep_gain{gain_per_stage**2}')
-        
+            self.startRecording(f"burst_sweep_gain{gain_per_stage**2}")
+
         self.rtm.setWaveformBurstCount(cycles=cycles)
         self.rtm.setWaveformBurstIdle(0.5)
-        self.rtm.toggleWaveformBurst()                                
+        self.rtm.toggleWaveformBurst()
 
         for freq in freq_range:
             self.rtm.setWaveVoltFrequency(freq=freq)
             time.sleep(per_step_time)
-        
-        self.rtm.toggleWaveformBurst(status='OFF')
+
+        self.rtm.toggleWaveformBurst(status="OFF")
         self.osci_off()
 
-        #self.wait_for_raspi()
-        
+        # self.wait_for_raspi()
+
         return freq_range
 
-    def sanityCheckRTM(self, record=True, gains_per_stage=[1,2,4], amp_V=0.01):
+    def sanityCheckRTM(self, record=True, gains_per_stage=[1, 2, 4], amp_V=0.01):
         # reset scope
         self.log_info("--- Running Sanity check! ---")
         self.log_info("--- 3 frequencies [10,30,50] kHz ---")
@@ -204,25 +248,27 @@ class acoustics:
         time.sleep(1)
         self.set_record_time(40)
         if record:
-            self.startRecording(f'sanity_check_gains-{(gains_per_stage[0])**2}-{(gains_per_stage[1])**2}-{(gains_per_stage[2])**2}')
+            self.startRecording(
+                f"sanity_check_gains-{(gains_per_stage[0])**2}-{(gains_per_stage[1])**2}-{(gains_per_stage[2])**2}"
+            )
         time.sleep(0.01)
         self.osci_on(amp_V)
         self.enable()
-        self.rtm.setWaveVoltFrequency(freq=1e3)        
-        
+        self.rtm.setWaveVoltFrequency(freq=1e3)
+
         freq_vals = [10e3, 30e3, 50e3]
 
         for freq in freq_vals:
-            self.rtm.setWaveVoltFrequency(freq=freq)                        
+            self.rtm.setWaveVoltFrequency(freq=freq)
             for gain in gains_per_stage:
-                self.enable(gain, gain)                
+                self.enable(gain, gain)
                 time.sleep(3)
 
         self.osci_off()
-        #self.wait_for_raspi()
-        
+        # self.wait_for_raspi()
+
         return freq_vals
-    
+
     def singleFreqRun(self, record=True, freq=10e3, gain_per_stage=1, amp_V=0.01):
         # reset scope
         self.log_info("--- Running Single Frequency check! ---")
@@ -230,41 +276,38 @@ class acoustics:
         time.sleep(1)
         self.set_record_time(30)
         if record:
-            self.startRecording('single_frequency{freq}_gain{gain_per_stage**2}')
+            self.startRecording(f"single_frequency{freq}_gain{gain_per_stage**2}")
         time.sleep(0.01)
         self.osci_on(amp_V)
 
         self.enable(gain_per_stage, gain_per_stage)
-        self.rtm.setWaveVoltFrequency(freq=freq)        
+        self.rtm.setWaveVoltFrequency(freq=freq)
         time.sleep(30)
-        
+
         self.osci_off()
-        #self.wait_for_raspi()
+        # self.wait_for_raspi()
 
     def backgroundRun(self, record=True, amp_V=0.01):
         # reset scope
         self.log_info("--- Running Background test! ---")
         self.rtm.reset()
         time.sleep(1)
-        gainlist_per_stage = [1,2,4,8,16,32]
-        gain_count = len(gainlist)
+        gainlist_per_stage = [1, 2, 4, 8, 16, 32]
+        gain_count = len(gainlist_per_stage)
         delta_t = 10
-        self.set_record_time(delta_t*gain_count + 5)
-        gain_title = ''
-        for i, gain in enumerate(gainlist):
-            gain_title += f'-{gain**2}'
+        self.set_record_time(delta_t * gain_count + 5)
+        gain_title = ""
+        for i, gain in enumerate(gainlist_per_stage):
+            gain_title += f"-{gain**2}"
         if record:
-            self.startRecording('background_gains' + gain_title)
+            self.startRecording("background_gains" + gain_title)
         time.sleep(0.01)
         self.osci_on(amp_V)
 
         for gain in gainlist_per_stage:
             self.enable(gain, gain)
-            self.rtm.setWaveVoltFrequency(freq=1e3)        
+            self.rtm.setWaveVoltFrequency(freq=1e3)
             time.sleep(delta_t)
-        
-        self.osci_off()
-        #self.wait_for_raspi()
 
-        
-        
+        self.osci_off()
+        # self.wait_for_raspi()
