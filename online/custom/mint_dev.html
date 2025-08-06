@@ -1,0 +1,1858 @@
+<!--
+  Test page for MINT integration
+ -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" 
+          content="width=device-width,
+                   initial-scale=1.0">
+  <title>MINT Development Test Page</title>
+  <link rel="icon" type="image/png" href="./images/MINT Sticker.png"/>
+  <link rel="stylesheet" href="midas.css">
+
+  <script src="controls.js"></script>
+  <script src="midas.js"></script>
+  <script src="mhttpd.js"></script>
+  <script src="mhistory.js"></script>
+
+
+  <!-- PUT STYLES HERE -->
+  <style>
+      svg {
+         width: 100%;
+         height: 27vh;
+         border: 0px;
+         /* display: block; */
+      }
+
+      .pmt-0-region {
+         opacity: 0.5;
+         fill: rgb(187, 164, 37);
+         stroke: rgb(187, 164, 37);
+         stroke-width: 5;
+         cursor: pointer;
+         transition: fill 0.2s ease;
+      }
+
+      .pmt-0-region.active {
+         opacity: 0.6;
+         fill: rgb(255, 224, 50);
+         stroke: rgb(255, 224, 50);
+         stroke-width: 5;
+         cursor: pointer;
+         transition: fill 0.2s ease;
+      }
+
+      .pmt-1-region {
+         opacity: 0.5;
+         fill: rgb(187, 164, 37);
+         stroke: rgb(187, 164, 37);
+         stroke-width: 5;
+         cursor: pointer;
+         transition: fill 0.2s ease;
+      }
+
+      .pmt-1-region.active {
+         opacity: 0.6;
+         fill: rgb(255, 224, 50);
+         stroke: rgb(255, 224, 50);
+         stroke-width: 5;
+         cursor: pointer;
+         transition: fill 0.2s ease;
+      }
+
+      .tab {
+         overflow: hidden;
+         border: 1px solid #ccc;
+         background-color: #f1f1f1;
+      }
+
+      .tab button {
+         background-color: inherit;
+         float: left;
+         border: none;
+         outline: none;
+         cursor: pointer;
+         padding: 14px 16px;
+         transition: 0.3s;
+      }
+
+      .tab button:hover {
+         background-color: #ddd;
+      }
+
+      /* Create an active/current tablink class */
+      .tab button.active {
+         background-color: #ccc;
+      }
+
+      /* Style the tab content */
+      .tabcontent {
+         display: none;
+         padding: 6px 12px;
+         border: 1px solid #ccc;
+         border-top: none;
+      }
+  </style>
+</head>
+
+<!-- Primary body -->
+<body class="mcss" onload="mhttpd_init('MINT Development Test Page');mhistory_init();">
+<div id="mheader"></div>
+<div id="msidenav" style="width: 6vw"></div>
+
+<!-- Primary div -->
+<div id="mmain"> 
+
+   <table class="mtable" id="statusTable" style="display: table; vertical-align:top; width: 30vw; float: left">
+      <tr>
+         <td>
+            <table class="mtable" id="runStatus" width="100%">
+               <tr>
+                  <td colspan="5" class="mtableheader">Run Status</td>
+               </tr>
+
+               <tr align="center">
+                  <td id="runNumberCell" align="center" colspan="1" rowspan="2" class="mgreencolor">
+                     Run
+                     <br><span id="runNumber">runNumber</span>
+                     <br><span id="runState">runState</span>
+                     <br>
+                     <input class="mbutton" id="startButton" type=button value=Start
+                           onClick="mhttpd_start_run('&Return=Status');">
+                     <input class="mbutton" id="stopButton" type=button value=Stop
+                           onClick="mhttpd_stop_run('&Return=Status');">
+                     <input class="mbutton" id="pauseButton" type=button value=Pause
+                           onClick="mhttpd_pause_run('&Return=Status');">
+                     <input class="mbutton" id="resumeButton" type=button value=Resume
+                           onClick="mhttpd_resume_run('&Return=Status');">
+                     <input class="mbutton" id="cancelButton" type=button value="Cancel Transition"
+                           onClick="mhttpd_cancel_transition();">
+                  </td>
+                  <td id="runStatusStartTime" colspan="2"> runStatusStartTime</td>
+                  <td id="runStatusStopTime" colspan="2"> runStatusStopTime</td>
+               </tr>
+
+               <tr align="center">
+                  <td id="runStatusAlarm" class="mgreencolor"> runStatusAlarm</td>
+                  <td id="runStatusSequencer" class="mgreencolor"> runStatusSequencer</td>
+                  <td id="runStatusLogger" colspan="2"> runStatusLogger</td>
+               </tr>
+
+               <tr>
+                  <td colspan="5">
+                     <table id="runStatusExperimentItems" class="genericStripe" width="100%">
+
+                     </table>
+                  </td>
+               </tr>
+
+               <tr>
+                  <td colspan="5" id="msgService" class="mmsgService">
+
+                  </td>
+               </tr>
+
+            </table>
+
+         </td>
+      </tr>
+
+
+      <tr>
+         <td>
+
+            <table class="mtable" id="equipmentList" width="100%">
+               <tr>
+                  <th colspan="5" class="mtableheader">Equipment</th>
+               </tr>
+               <tr>
+                  <th>Equipment<a id='hide' class='hideButton' href="javascript:unhideEquipments()">+</a></th>
+                  <th>Status</th>
+                  <th>Events</th>
+                  <th>Events[/s]</th>
+                  <th>Data[MB/s]</th>
+               </tr>
+            </table>
+
+         </td>
+      </tr>
+
+      <tr>
+         <td>
+
+            <table class="mtable" id="logChannel" width="100%">
+               <tr>
+                  <th class="mtableheader" colspan="6">Logging Channels</th>
+               </tr>
+
+
+            </table>
+
+         </td>
+      </tr>
+
+      <tr>
+         <td>
+            <table class="mtable clientsTable" id="clientsTable" width="100%">
+               <tr>
+                  <th class="mtableheader">Clients</th>
+               </tr>
+            </table>
+         </td>
+      </tr>
+
+   </table>
+
+
+   <!-- MINT Config -->
+   <table id="MINT Config" class="mtable" style="display: table; vertical-align:top; width: 31vw; float: left">
+      <tr>
+         <td colspan="2" class="mtableheader">MINT Configuration</td>
+      <tr>
+      <tr>
+         <td>
+            <table class="mtable" style="display: table; vertical-align:top; width: 30.66vw; float: left">     
+               <tr>
+                  <td colspan="2" align="center" style="font-weight: bold;" >Hemisphere and PMT Selection</td>
+               </tr>
+            
+                  <!-- Dropdown menus for selecting hemispheres -->
+                  <tr>
+                  <td colspan="1" rowspan="1" align="center">
+                     <label for="hemisphere0Dropdown">Hemisphere 0:</label>
+                     <select id="hemisphere0Dropdown" class="modbselect" data-odb-path="/MINT/Config/Hemispheres[0]">
+                        <option disabled>Select Hemisphere</option>
+                        <option value=0>No Hemisphere</option>
+                     </select>
+                  </td>
+                  <td colspan="1" rowspan="1" align="center">
+                     <label for="hemisphere1Dropdown">Hemisphere 1:</label>
+                     <select id="hemisphere1Dropdown" class="modbselect" data-odb-path="/MINT/Config/Hemispheres[1]">
+                        <option disabled>Select Hemisphere</option>
+                        <option value=0>No Hemisphere</option>
+                     </select>
+                  </td>
+                  </tr>
+            
+               <!-- Select all PMTs, reset P*MTs -->
+               <tr>
+                  <td colspan="1" align="center">
+                     <button id="Hemisphere 0 PMT Select All" class="modbbutton mbutton" data-odb-path="/MINT/Config/PMTs[0]" data-odb-value=255>Select All</button>
+                     <button id="Hemisphere 0 PMT Reset" class="modbbutton mbutton" data-odb-path="/MINT/Config/PMTs[0]" data-odb-value=0>Reset</button>
+                  </td>
+                  <td colspan="1" align="center">
+                     <button id="Hemisphere 1 PMT Select All" class="modbbutton mbutton" data-odb-path="/MINT/Config/PMTs[1]" data-odb-value=255>Select All</button>
+                     <button id="Hemisphere 1 PMT Reset" class="modbbutton mbutton" data-odb-path="/MINT/Config/PMTs[1]" data-odb-value=0>Reset</button>
+                  </td>
+               </tr>
+            
+                  <!-- Images for selecting PMTs -->
+                  <tr>
+                  <td colspan="1" align="center">
+                     <svg id="hemisphere 0 PMTs" viewBox="0 0 600 400" preserveAspectRatio="xMidYMid meet">
+                        <image id="hemisphere 0 picture" href="images/MINT Sticker.png" x="5%" y="-15%" width="90%" />
+                     </svg>
+                  </td>
+                  <td colspan="1" align="center">
+                     <svg id="hemisphere 1 PMTs" viewBox="0 0 600 400" preserveAspectRatio="xMidYMid meet">
+                        <image id="hemisphere 1 picture" href="images/MINT Sticker.png" x="5%" y="-15%" width="90%" />
+                     </svg>
+                  </td>
+                  </tr>
+            </table>
+         </td>
+      </tr>
+
+   <!-- Test selection -->
+      <tr>
+         <td colspan="2"> 
+            <table class="mtable" style="display: table; vertical-align:top; width: 30.66vw; float: left">
+               <tr>
+                  <td colspan="3" align="center" style="font-weight: bold;" >Hemisphere 0 Test Selection</td>
+               </tr>
+               <tr>
+                  <td colspan="3" align="center">
+                     <input type="button" class="mbutton" value="Select All" onClick="selectAllTests(0);">
+                     <input type="button" class="mbutton" value="Reset" onClick="resetTests(0);">
+                  </td>
+               </tr>
+               <tr>  
+                  <td colspan="1" align="center">
+                     <span>
+                        Flash uBase? 
+                        <input type="checkbox" class="modbcheckbox" data-odb-path="/MINT/Sequencer/Config/Flash uBase[0]"/>
+                     </span>
+                  </td>
+                  <td colspan="1" align="center">
+                     <span>
+                        Test Interposer? 
+                        <input type="checkbox" class="modbcheckbox" data-odb-path="/MINT/Sequencer/Config/Test Interposer[0]"/>
+                     </span>
+                  </td>
+                  <td colspan="1" align="center">
+                     <span>
+                        Test ADC? 
+                        <input type="checkbox" class="modbcheckbox" data-odb-path="/MINT/Sequencer/Config/Test ADC[0]"/>
+                     </span>
+                  </td>
+               </tr>
+               <tr> 
+                  <td colspan="1" align="center">
+                     <span>
+                        Test Flasher? 
+                        <input type="checkbox" class="modbcheckbox" data-odb-path="/MINT/Sequencer/Config/Test Flashers[0]"/>
+                     </span>
+                  </td>
+                  <td colspan="1" align="center">
+                     <span>
+                        Test Acoustics? 
+                        <input type="checkbox" class="modbcheckbox" data-odb-path="/MINT/Sequencer/Config/Test Acoustics[0]"/>
+                     </span>
+                  </td> 
+                  <td colspan="1" align="center">
+                     <span>
+                        Test MIST? 
+                        <input type="checkbox" class="modbcheckbox" data-odb-path="/MINT/Sequencer/Config/Test MIST[0]"/>
+                     </span>
+                  </td>
+               </tr>
+               <tr> 
+                  <td colspan="1" align="center">
+                     Test Camera?
+                     <input type="checkbox" class="modbcheckbox" data-odb-path="/MINT/Sequencer/Config/Test Camera[0]"/>
+                  </td>
+                  <td colspan="1" align="center">
+                     <span>
+                        Test Dark Rate? 
+                        <input type="checkbox" class="modbcheckbox" data-odb-path="/MINT/Sequencer/Config/Test Dark Rate[0]"/>
+                     </span>
+                  </td>
+                  <td colspan="1" align="center">
+                     <span>
+                        Debug Test? 
+                        <input type="checkbox" class="modbcheckbox" data-odb-path="/MINT/Sequencer/Config/Debug Test[0]"/>
+                     </span>
+                  </td>
+               </tr>
+            </table>
+         </td>
+      </tr>
+      <tr>
+         <td colspan="2"> 
+            <table class="mtable" style="display: table; vertical-align:top; width: 30.66vw; float: left">
+               <tr>
+                  <td colspan="3" align="center" style="font-weight: bold;" >Hemisphere 1 Test Selection</td>
+               </tr>
+               <tr>
+                  <td colspan="3" align="center">
+                     <input type="button" class="mbutton" value="Select All" onClick="selectAllTests(1);">
+                     <input type="button" class="mbutton" value="Reset" onClick="resetTests(1);">
+                  </td>
+               </tr>
+               <tr>  
+                  <td colspan="1" align="center">
+                     <span>
+                        Flash uBase? 
+                        <input type="checkbox" class="modbcheckbox" data-odb-path="/MINT/Sequencer/Config/Flash uBase[1]"/>
+                     </span>
+                  </td>
+                  <td colspan="1" align="center">
+                     <span>
+                        Test Interposer? 
+                        <input type="checkbox" class="modbcheckbox" data-odb-path="/MINT/Sequencer/Config/Test Interposer[1]"/>
+                     </span>
+                  </td>
+                  <td colspan="1" align="center">
+                     <span>
+                        Test ADC? 
+                        <input type="checkbox" class="modbcheckbox" data-odb-path="/MINT/Sequencer/Config/Test ADC[1]"/>
+                     </span>
+                  </td>
+               </tr>
+               <tr> 
+                  <td colspan="1" align="center">
+                     <span>
+                        Test Flasher? 
+                        <input type="checkbox" class="modbcheckbox" data-odb-path="/MINT/Sequencer/Config/Test Flashers[1]"/>
+                     </span>
+                  </td>
+                  <td colspan="1" align="center">
+                     <span>
+                        Test Acoustics? 
+                        <input type="checkbox" class="modbcheckbox" data-odb-path="/MINT/Sequencer/Config/Test Acoustics[1]"/>
+                     </span>
+                  </td> 
+                  <td colspan="1" align="center">
+                     <span>
+                        Test MIST? 
+                        <input type="checkbox" class="modbcheckbox" data-odb-path="/MINT/Sequencer/Config/Test MIST[1]"/>
+                     </span>
+                  </td>
+               </tr>
+               <tr> 
+                  <td colspan="1" align="center">
+                     Test Camera?
+                     <input type="checkbox" class="modbcheckbox" data-odb-path="/MINT/Sequencer/Config/Test Camera[1]"/>
+                  </td>
+                  <td colspan="1" align="center">
+                     <span>
+                        Test Dark Rate? 
+                        <input type="checkbox" class="modbcheckbox" data-odb-path="/MINT/Sequencer/Config/Test Dark Rate[1]"/>
+                     </span>
+                  </td>
+                  <td colspan="1" align="center">
+                     <span>
+                        Debug Test? 
+                        <input type="checkbox" class="modbcheckbox" data-odb-path="/MINT/Sequencer/Config/Debug Test[1]"/>
+                     </span>
+                  </td>
+               </tr>
+            </table>
+         </td>
+      </tr>
+
+   <!-- <tr>
+   <td colspan="2">
+      <table class="mtable" style="display: table; vertical-align:top; width: 30.66vw; float: left">
+         <tr>
+            <td colspan="3" align="center" style="font-weight: bold;" >Database Configuration</td>
+         </tr>
+         <tr>
+            <td>
+               Data Out Path: <span class="modbvalue" data-odb-path=></span>
+            </td>
+         </tr>
+
+      </table>
+   </td>
+   </tr> -->
+   </tr>
+   </table>
+  
+  <!-- Sequencer Control -->
+  <table class="mtable" id="statusTable" style="display: table; vertical-align:top; width: 31vw; float: left">
+   <tr>
+      <td colspan="5" class="mtableheader">Sequencer Control</td>
+   </tr>
+
+   <!-- State -->
+   <tr>
+      <td id="pySeqProgStateCell" colspan="2" rowspan="2" align="center">
+         PySequencer: 
+         <br><span id="pySeqProgramState">pySeqProgramState</span>
+         <div><input 
+            input class="mbutton" 
+            id="pySeqProgStartButton" 
+            type=button 
+            value="Start"              
+            onClick="startPySequencerProgram();" 
+         ></input></div>
+         <div><input 
+            input class="mbutton" 
+            id="pySeqProgStopButton" 
+            type=button
+            value="Shutdown"              
+            onClick="stopPySequencerProgram();" 
+         ></input></div>
+      </td>
+      <td id="pySeqCurrentFileCell" colspan="3" rowspan="1" align="center">
+         Current File: <span id="pySeqCurrentFile">currentFilename</span>
+      </td>
+   </tr>
+   <tr>
+      <td id="pySeqLoadFileCell" colspan="3" rowspan="1" align="center">
+         Load file:
+         <select id="pySequencerFileDropdown" class="modbselect" data-odb-path="/PySequencer/Command/Load filename">
+            <option value="" disabled>Select Sequencer File</option>
+            <option value="default_sequence.py">default_sequence.py</option>
+            <option value="pysequencer_script_basic.py">pysequencer_script_basic.py</option>
+         </select>
+         <button id="pySequencerFileLoadNew" class="modbbutton mbutton" data-odb-path="/PySequencer/Command/Load new file" data-odb-value=1>Load new file</button>
+      </td>
+   </tr>
+   <tr>
+      <td id="pySeqStateCell" colspan="2" rowspan="1" align="center">         
+         PySequencer State:
+         <br><span id="pySequencerState">pySequencerState</span>
+         <br>
+         <button 
+            class="modbbutton mbutton" 
+            id="pySeqStart" 
+            data-odb-path="/PySequencer/Command/Start script"
+            data-odb-value="Yes"
+         >Start</button>
+         <button 
+            class="modbbutton mbutton" 
+            id="pySeqStopNow" 
+            data-odb-path="/PySequencer/Command/Stop immediately"
+            data-odb-value="Yes"
+         >Stop immediately</button>
+         <button 
+            class="modbbutton mbutton" 
+            id="pySeqStopAfterRun" 
+            data-odb-path="/PySequencer/Command/Stop after run"
+            data-odb-value="Yes"
+         >Stop after run</button>
+         <button 
+            class="modbbutton mbutton" 
+            id="pySeqCancelStop" 
+            data-odb-path="/PySequencer/Command/Cancel stop after run"
+            data-odb-value="Yes"
+         >Cancel stop</button>
+         <button 
+            class="modbbutton mbutton" 
+            id="pySeqPause" 
+            data-odb-path="/PySequencer/Command/Pause script"
+            data-odb-value="Yes"
+         >Pause</button>
+         <button 
+            class="modbbutton mbutton" 
+            id="pySeqResume" 
+            data-odb-path="/PySequencer/Command/Resume script"
+            data-odb-value="Yes"
+         >Resume</button>
+      </td>
+      <td colspan="3" rowspan="1" align="center">
+         Run Description:
+         <div class="modbvalue" data-odb-path="/Experiment/Run Parameters/Run Description">
+      </td>
+   </tr>
+
+   <tr id="pySequencerErrorRow">
+      <td id="pySequencerErrorCell" colspan="5">
+         <span id="pySequencerError">pySequencerError</span>
+      </td>
+   </tr>
+   
+   <tr>
+      <td colspan="5" rowspan="1" class="mmsgService" align="left">
+         <span id="pyMsgService">
+            pyMsgService
+         </span>
+      </td>
+   </tr>
+
+   <tr>
+      <td id="pySequencerStatusCell" colspan="5">
+         <table class="mtable" style="display: table; vertical-align:top; width: 30vw; float: left">
+            <tr>
+               <td colspan="2" class="mtableheader">Sequencer Progress</td>
+            </tr>
+            
+            <tr> 
+               <td id="Interposer Progress Cell 0" colspan="1" align="Center"><span id="interposerTestSpanA">Interposer</span></td>
+               <td id="Interposer Progress Cell 1" colspan="1" align="Center"><span id="interposerTestSpanB">Interposer</span></td>
+            </tr>
+
+            <tr> 
+               <td id="uBase Progress Cell 0" colspan="1" align="Center"><span id="flashUbaseSpanA">uBase Reflash</span></td>
+               <td id="uBase Progress Cell 1" colspan="1" align="Center"><span id="flashUbaseSpanB">uBase Reflash</span></td>
+            </tr>
+
+            <tr> 
+               <td id="Flashers Progress Cell 0" colspan="1" align="Center"><span id="flasherTestSpanA">Flasher</span></td>
+               <td id="Flashers Progress Cell 1" colspan="1" align="Center"><span id="flasherTestSpanB">Flasher</span></td>
+            </tr>
+            
+            <tr> 
+               <td id="MIST Progress Cell 0" colspan="1" align="Center"><span id="mistTestSpanA">MIST</span></td>
+               <td id="MIST Progress Cell 1" colspan="1" align="Center"><span id="mistTestSpanB">MIST</span></td>
+            </tr>
+            
+            <tr> 
+               <td id="Acoustics Progress Cell 0" colspan="1" align="Center"><span id="acousticTestSpanA">Acoustics</span></td>
+               <td id="Acoustics Progress Cell 1" colspan="1" align="Center"><span id="acousticTestSpanB">Acoustics</span></td>
+            </tr>
+
+            <tr> 
+               <td id="Camera Progress Cell 0" colspan="1" align="Center"><span id="cameraTestSpanA">Camera</span></td>
+               <td id="Camera Progress Cell 1" colspan="1" align="Center"><span id="cameraTestSpanB">Camera</span></td>
+            </tr>
+
+            <tr> 
+               <td id="ADC Progress Cell 0" colspan="1" align="Center"><span id="adcTestSpanA">ADC</span></td>
+               <td id="ADC Progress Cell 1" colspan="1" align="Center"><span id="adcTestSpanB">ADC</span></td>
+            </tr>
+
+            <tr> 
+               <td id="Dark Rate Progress Cell 0" colspan="1" align="Center"><span id="darkRateTestSpanA">Dark Rate</span></td>
+               <td id="Dark Rate Progress Cell 1" colspan="1" align="Center"><span id="darkRateTestSpanB">Dark Rate</span></td>
+            </tr>
+            <tr>
+               <td colspan="2" class="mtableheader">Sequencer Ouput</td>
+            </tr>
+            <tr>
+               <td colspan="2">
+                  <div class="tab">
+                     <button class="tablinks" onclick="switchSequencerTab(event, 'uBase')">London</button>
+                     <button class="tablinks" onclick="switchSequencerTab(event, 'uBase')">Paris</button>
+                     <button class="tablinks" onclick="switchSequencerTab(event, 'uBase')">Tokyo</button>
+                  </div>
+               </td>
+            </tr>
+         </table>
+      </td>
+   </tr>
+
+   <div class="modb" data-odb-path="/PySequencer/State/Message" onchange="processPySequencerMessage(this.value)"></div>
+  </table>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- Scripts -->
+<script>
+
+
+   const pom_ellipses = [
+      {cx: "301", cy: "99", rx: "45", ry: "40", transform:"rotate(0, 301, 99)", pmt: "1"},
+      {cx:"193", cy: "208", rx: "41", ry: "46", transform:"rotate(0, 192, 208)", pmt:"2"},
+      {cx:"301", cy: "315", rx: "45", ry: "40", transform:"rotate(0, 301, 315)", pmt:"3"},
+      {cx:"408", cy: "208", rx: "39", ry: "46", transform:"rotate(0, 408, 208)", pmt:"4"},
+      {cx:"428", cy: "79", rx: "25", ry: "45", transform:"rotate(-45 428 79)", pmt:"5"},
+      {cx:"174", cy: "80", rx: "25", ry: "45", transform:"rotate(45 174 80)", pmt:"6"},
+      {cx:"165", cy: "332", rx: "30", ry: "45", transform:"rotate(-45 174 320)", pmt:"7"},
+      {cx:"428", cy: "335", rx: "30", ry: "45", transform:"rotate(45 428 335)", pmt:"8"}
+   ];
+
+   const pcal_ellipses = [
+      {cx: "199", cy: "36", rx: "16", ry: "49", transform: "rotate(58 199 36)", pmt: "1"},
+      {cx: "103", cy: "204", rx: "16", ry: "50", transform: "rotate(0 103 204)", pmt: "2"},
+      {cx: "199", cy: "374", rx: "16", ry: "49", transform: "rotate(-58 199 374)", pmt: "3"},
+      {cx: "392", cy: "374", rx: "17", ry: "48", transform: "rotate(60 392 374)", pmt: "4"},
+      {cx: "491", cy: "205", rx: "16", ry: "50", transform: "rotate(0 491 205)", pmt: "5"},
+      {cx: "398", cy: "37", rx: "18", ry: "48", transform: "rotate(-60 398 37)", pmt: "6"}
+   ];
+
+   function updateHemisphereDropdowns(){
+      const dropdown_a = document.getElementById('hemisphere0Dropdown');
+      const dropdown_b = document.getElementById('hemisphere1Dropdown');
+
+      for (let i = 1; i <= 41; i++) {
+         const paddedNumber = i.toString().padStart(2, '0');
+         const optionText = `p-1-1-om-hs-${paddedNumber}`;
+
+         const option_a = document.createElement('option');
+         option_a.value = i;
+         option_a.textContent = optionText;
+         dropdown_a.appendChild(option_a);
+
+         const option_b = document.createElement('option');
+         option_b.value = i;
+         option_b.textContent = optionText;
+         dropdown_b.appendChild(option_b);
+      }
+   }
+
+   async function updateHemisphereState(hemisphere){
+      // Function to update the state of a hemisphere. This preserves the
+      // state of a hemisphere on page refresh
+      const dropdown = document.getElementById('hemisphere'+hemisphere+'Dropdown');
+      const image = document.getElementById("hemisphere "+hemisphere+" picture");
+
+      // Load default hemisphere image based on the current selection value
+      // of the hemisphere dropdown.
+      // Check the ODB for the current value.
+      await mjsonrpc_db_get_values([
+         `/MINT/Config/Hemispheres[${hemisphere}]`,
+      ]).then(function(rpc){
+         dropdown.value = rpc.result.data[0];
+      }).catch(function(error) {
+         mjsonrpc_error_alert(error);
+      });
+
+      updateHemisphereImage(hemisphere, image, dropdown);
+
+      // Check for changes in the selected hemisphere
+      dropdown.addEventListener("change", ()=>{
+         // Set the current PMT configuration to null
+         mjsonrpc_db_paste(
+            [`/MINT/Config/PMTs[${hemisphere}]`], 
+            [0]
+         ).catch(function(error) {
+            mjsonrpc_error_alert(error);
+         });
+
+         // Update image and add clickability
+         updateHemisphereImage(hemisphere, image, dropdown);
+      })
+   }
+
+   function updateHemisphereImage(hemisphere, image, dropdown){
+      // Function that selects an image based on the dropdown menu for a hemisphere
+      // and then populates with ellipses for PMT clickability.
+      const selected_value = dropdown.value;
+      var selected_ellipses;
+      // Remove current ellipses from the image
+      const svg = document.getElementById("hemisphere "+hemisphere+" PMTs");
+      svg.querySelectorAll("ellipse").forEach(e => e.remove());
+      
+      // Load a P-CAL or POM image depending on the configuration. MINT if null
+      if (selected_value == 0){
+         image.setAttribute("href", "images/MINT Sticker.png");
+         selected_ellipses = [];
+      } else if (selected_value == 2) {
+         // select a P-CAL
+         image.setAttribute("href", 'images/PCAL PMTs.png');
+         selected_ellipses = pcal_ellipses;
+      } else {
+         // Select a P-OM
+         image.setAttribute("href", './images/POM PMTs.png?v=2');
+         selected_ellipses = pom_ellipses;
+      }
+
+      // Populate ellipses for hemisphere 0
+      selected_ellipses.forEach((e, index) => {
+         const ellipse = document.createElementNS("http://www.w3.org/2000/svg", "ellipse");
+         ellipse.setAttribute("cx", e.cx);
+         ellipse.setAttribute("cy", e.cy);
+         ellipse.setAttribute("rx", e.rx);
+         ellipse.setAttribute("ry", e.ry);
+         ellipse.setAttribute("transform", e.transform);
+         ellipse.setAttribute("pmt-number", e.pmt);
+         ellipse.classList.add("pmt-"+hemisphere+"-region");
+         svg.appendChild(ellipse);
+      });
+      addPMTClickability(hemisphere);
+   }
+
+   function setDefaultPMTToggle(){
+      mjsonrpc_db_get_values([
+         "/MINT/Config/PMTs[0]", 
+         "/MINT/Config/PMTs[1]"]
+      ).then(function(rpc){
+         let current_pmt_a_state = rpc.result.data[0];
+         let current_pmt_b_state = rpc.result.data[1];
+         
+         // Update A ellipses and boxes
+         document.querySelectorAll(".pmt-0-region").forEach(ellipse=>{
+            // Check if this PMTs bit is set
+            if (current_pmt_a_state&(1<<(parseInt(ellipse.getAttribute("pmt-number"))-1))){
+               ellipse.classList.add('active');
+            }
+         });
+
+         document.querySelectorAll(".pmt-1-region").forEach(ellipse=>{
+            // Check if this PMTs bit is set
+            if (current_pmt_b_state&(1<<(parseInt(ellipse.getAttribute("pmt-number"))-1))){
+               ellipse.classList.add('active');
+            }
+         });
+      }).catch(function(error){
+         mjsonrpc_error_alert(error);
+      });
+   }
+
+   function addPMTClickability(hemisphere){
+      // Function to toggle PMT activation and set the ODB values for PMTs
+      // Pass hemisphere as 0 or 1
+      document.querySelectorAll('.pmt-' + hemisphere + '-region').forEach(ellipse => {
+         ellipse.addEventListener('click', () => {
+            ellipse.classList.toggle('active');
+            const pmt_number = parseInt(ellipse.getAttribute("pmt-number"));
+            const pmt_state = ellipse.classList.contains("active");
+
+            mjsonrpc_db_get_values(
+               [`/MINT/Config/PMTs[${hemisphere}]`]
+            ).then(function(rpc){
+               var current_pmt_state = rpc.result.data[0];
+               // If we're activating the PMT, flip the corresponding bit
+               if (pmt_state){
+                  current_pmt_state |= (1 << (pmt_number-1));
+               } else {
+                  current_pmt_state &= ~(1 << (pmt_number-1));
+               }
+               return current_pmt_state;
+            }).then(current_pmt_state =>
+               mjsonrpc_db_paste(
+                  [`/MINT/Config/PMTs[${hemisphere}]`], 
+                  [current_pmt_state]
+               )
+            ).catch(function(error) {
+               mjsonrpc_error_alert(error);
+            });
+         });
+      });
+   }
+
+   function watchPMTButtons(){
+      document.getElementById("Hemisphere 0 PMT Select All").addEventListener("click", function () {
+         document.querySelectorAll(".pmt-0-region").forEach(ellipse=>{
+            ellipse.classList.add('active');
+         });
+      });
+      document.getElementById("Hemisphere 1 PMT Select All").addEventListener("click", function () {
+         document.querySelectorAll(".pmt-1-region").forEach(ellipse=>{
+            ellipse.classList.add('active');
+         });
+      });
+
+      document.getElementById("Hemisphere 0 PMT Reset").addEventListener("click", function () {
+         document.querySelectorAll(".pmt-0-region").forEach(ellipse=>{
+            ellipse.classList.remove('active');
+         });
+      });
+      document.getElementById("Hemisphere 1 PMT Reset").addEventListener("click", function () {
+         document.querySelectorAll(".pmt-1-region").forEach(ellipse=>{
+            ellipse.classList.remove('active');
+         });
+      });
+   }
+
+   document.addEventListener('DOMContentLoaded', () => {
+      updateHemisphereDropdowns();
+      updateHemisphereState(0);
+      updateHemisphereState(1);
+      setDefaultPMTToggle();
+      watchPMTButtons();
+   });
+
+   function startPySequencerProgram(){
+      dlgConfirm(
+         "Are you sure you want to start the PySequencer client?",
+         function (confirm) {
+            if (confirm){
+               mjsonrpc_start_program("PySequencer").catch(function (error) {
+                  mjsonrpc_error_alert(error);
+               });
+            }
+         }
+      );
+   }
+
+   function stopPySequencerProgram(){
+      dlgConfirm(
+         "Are you sure you want to shutdown the PySequencer client?",
+         function (confirm) {
+            if (confirm){
+               mjsonrpc_stop_program("PySequencer").catch(function (error) {
+                  mjsonrpc_error_alert(error);
+               });
+            }
+         }
+      );
+   }
+
+   function selectAllTests(hemisphere){
+      mjsonrpc_db_paste(
+         [
+            `/MINT/Sequencer/Config/Flash uBase[${hemisphere}]`,
+            `/MINT/Sequencer/Config/Test Interposer[${hemisphere}]`,
+            `/MINT/Sequencer/Config/Test ADC[${hemisphere}]`,
+            `/MINT/Sequencer/Config/Test Flashers[${hemisphere}]`,
+            `/MINT/Sequencer/Config/Test Acoustics[${hemisphere}]`,
+            `/MINT/Sequencer/Config/Test MIST[${hemisphere}]`,
+            `/MINT/Sequencer/Config/Test Camera[${hemisphere}]`,
+            `/MINT/Sequencer/Config/Test Dark Rate[${hemisphere}]`,
+            `/MINT/Sequencer/Config/Debug Test[${hemisphere}]`,
+         ], 
+         [1,1,1,1,1,1,1,1,1]
+      ).catch(function (error){
+         mjsonrpc_error_alert(error);
+      });
+   }
+
+   function resetTests(hemisphere){
+      mjsonrpc_db_paste(
+         [
+            `/MINT/Sequencer/Config/Flash uBase[${hemisphere}]`,
+            `/MINT/Sequencer/Config/Test Interposer[${hemisphere}]`,
+            `/MINT/Sequencer/Config/Test ADC[${hemisphere}]`,
+            `/MINT/Sequencer/Config/Test Flashers[${hemisphere}]`,
+            `/MINT/Sequencer/Config/Test Acoustics[${hemisphere}]`,
+            `/MINT/Sequencer/Config/Test MIST[${hemisphere}]`,
+            `/MINT/Sequencer/Config/Test Camera[${hemisphere}]`,
+            `/MINT/Sequencer/Config/Test Dark Rate[${hemisphere}]`,
+            `/MINT/Sequencer/Config/Debug Test[${hemisphere}]`,
+         ], 
+         [0,0,0,0,0,0,0,0,0]
+      ).catch(function (error){
+         mjsonrpc_error_alert(error);
+      });
+   }
+
+   function processPySequencerMessage(value){
+      if (value != ""){
+         mjsonrpc_db_get_values(
+            ["/PySequencer/State/Message Wait"]
+         ).then(function(rpc){
+            var requires_confirmation = rpc.result.data[0];
+            if (requires_confirmation){
+               dlgConfirm(
+                  value, 
+                  function(confirm){
+                     if (confirm){
+                        mjsonrpc_db_paste([
+                           "/PySequencer/State/Message", "PySequencer/State/Message Wait"], 
+                           ["", "No"]
+                        ).catch(function(error){
+                           mjsonrpc_error_alert(error);
+                        });
+                     }
+                  }
+               );
+            } else {
+               dlgAlert(value);
+               mjsonrpc_db_paste([
+                  "/PySequencer/State/Message"], 
+                  [""]
+               ).catch(function(error){
+                  mjsonrpc_error_alert(error);
+               });
+            }
+         }).catch(function(error){
+            mjsonrpc_error_alert(error);
+         });
+      }    
+   }
+
+   function switchSequencerTab(tab){
+
+   }
+
+ </script>
+
+
+<!-- Code from MIDAS Status page example -->
+<script>
+   var update_timer_id;
+   let previous_equipment_names = [];
+
+   //pre-define some html codes for different tables/rows
+
+   const equipmentTableHtml = "<tr><th colspan=6 class=\"mtableheader\">Equipment</th></tr><tr><th>Equipment&nbsp;<a id='hide' class='hideButton' href=\"javascript:unhideEquipments()\">+</a></th><th>Status</th><th>Events</th><th>Events[/s]</th><th>Data[MB/s]</th></tr>";
+   const logChannelTableHtml = "<tr><th colspan=6 class=\"mtableheader\">Logging Channels</th></tr>";
+   const firstLogChannelHtml = "<tr id=\"logChannelFirstPart\" class=\"mtabvaritle\"><th colspan=\"2\">Channel</th><th>Events</th><th>MB written</th><th>Compr.</th><th>Disk Level</th></tr>";
+   const secondLogChannelHtml = "<tr id=\"logChannelSecondPart\" class=\"mtabvaritle\"><th colspan=\"2\">Lazy Label</th><th>Progress</th><th>File Name</th><th># Files</th><th>Total</th></tr>";
+   const clientTableHtml = "<tr><th colspan=6 class=\"mtableheader\">Clients</th></tr>";
+
+   function set_if_changed(id, text) {
+      var e = document.getElementById(id);
+      if (e) {
+         if (e.innerHTML != text) { // !== does not work here!
+            e.innerHTML = text;
+         }
+      }
+   }
+
+   function set_class_if_changed(id, cname) {
+      var e = document.getElementById(id);
+      if (e) {
+         if (e.className != cname) { // !== does not work here!
+            e.className = cname;
+         }
+      }
+   }
+
+   function set_bg_if_changed(id, color) {
+      var e = document.getElementById(id);
+      if (e) {
+         if (e.style.backgroundColor != color) { // !== does not work here!
+            e.style.backgroundColor = color;
+         }
+      }
+   }
+
+   function callback(rpc, alarm, loggerBool, lastMessage, equipmentNames, equipmentStatData, equipmentCommonData) {
+      // define all json data here
+      var experimentItemsJson = rpc.data[0];
+      var logChannelJson = rpc.data[1];
+      var clientsJson = rpc.data[2];
+      var runinfoJson = rpc.data[3];
+      var sequencerJson = rpc.data[4];
+      var loggerJson = rpc.data[5];
+      var LazyJson = rpc.data[6];
+      var experimentName = rpc.data[7];
+      var showPauseResume = rpc.data[8] === null || rpc.data[8]; // Key missing from ODB => show buttons
+      var pySequencerJson = rpc.data[9];
+      
+      var currentClientList = new Array();
+
+      function triggerAlarms() {
+         if (alarm["alarm_system_active"]) {
+            var allAlarms = alarm["alarms"]
+            for (var element in allAlarms) {
+               if (allAlarms[element]["triggered"] && allAlarms[element]["active"]) {
+                  if (document.getElementById(element + "Alarm") === null) {
+                     var newAlarm = document.crea-teElement("td");
+                     var bgcol = allAlarms[element]["bgcolor"];
+                     if (bgcol === "red")
+                        bgcol = "var(--mred)";
+                     document.getElementById("statusTable").insertBefore(newAlarm, document.getElementById("statusTable").firstChild);
+
+                     newAlarm.outerHTML = "<tr id=\"" +
+                        element +
+                        "Alarm" +
+                        "\" class=\"alarmRow\">\n<td colspan=6 style=\"background-color:" + bgcol +
+                        ";border-radius:12px;\" align=center>" +
+                        "<table width=\"100%%\"><tr" + " style=\"background-color:" + allAlarms[element]["bgcolor"] + "\">\n" +
+                        "<td align=center width=\"99%%\" style=\"border:0px;\"><font color=\"" +
+                        allAlarms[element]["fgcolor"] +
+                        "\" size=+3>" +
+                        allAlarms[element]["class"] +
+                        ":" +
+                        allAlarms[element]["show_to_user"] +
+                        "</font></td>\n" +
+                        "<td width=\"1%%\" style=\"border:0px;\">\n" +
+                        "<button class=\"mbutton\" type=\"button\" onclick=\"mhttpd_reset_alarm(\'" +
+                        element +
+                        "\');update_periodic();\">Reset</button>\n" +
+                        "</td>\n" +
+                        "</tr></table>\n" +
+                        "</td>\n" +
+                        "</tr>\n";
+                  }
+               } else {
+
+                  if (document.getElementById(element + "Alarm") != null) {
+                     document.getElementById(element + "Alarm").outerHTML = "";
+                  }
+               }
+            }
+         }
+      }
+
+      async function generatePySequencerStatus(){
+         // Update program state
+         if (clientsJson){
+            var py_seq_prog_state;
+            var py_seq_prog_cls;
+            if (isClientPresent("PySequencer")){
+               py_seq_prog_state = "Enabled";
+               py_seq_prog_cls = "mgreen mbox";
+               mhttpd_hide("pySeqProgStartButton");
+               mhttpd_unhide("pySeqProgStopButton");
+            } else {
+               py_seq_prog_state = "Shutdown";
+               py_seq_prog_cls = "mred mbox";
+               mhttpd_hide("pySeqProgStopButton");
+               mhttpd_unhide("pySeqProgStartButton");
+            }
+            set_class_if_changed("pySeqProgStateCell", py_seq_prog_cls);
+            set_if_changed("pySeqProgramState", py_seq_prog_state);
+         }
+
+         if (pySequencerJson){
+            // console.log(pySequencerJson);
+            // Update the current filename
+            mjsonrpc_db_get_values(
+               ["/PySequencer/State/Filename"]
+            ).then(function (rpc) {
+               let filename = rpc.result.data[0];
+               set_if_changed("pySeqCurrentFile", filename.slice(41));
+            }).catch(function (error){
+               mjsonrpc_error_alert(error);
+            });
+
+            
+            // Handle control buttons and colours
+            var py_seq_state;
+            mhttpd_hide("pySeqStart");
+            mhttpd_hide("pySeqStopNow");
+            mhttpd_hide("pySeqStopAfterRun");
+            mhttpd_hide("pySeqCancelStop");
+            mhttpd_hide("pySeqPause");
+            mhttpd_hide("pySeqResume");
+
+            if (pySequencerJson["state"]["error"] != ""){
+               set_if_changed("pySequencerState", "Error");
+               set_class_if_changed("pySeqStateCell", "mred mbox");
+               mhttpd_unhide("pySeqStart");
+               
+               mhttpd_unhide("pySequencerErrorRow");
+               set_if_changed("pySequencerError", pySequencerJson["state"]["error"])
+               set_class_if_changed("pySequencerErrorCell", "mred mbox");
+            } else {
+               mhttpd_hide("pySequencerErrorRow");
+               if (pySequencerJson["state"]["finished"]){
+                  py_seq_state = "Finished";
+                  cls = "mwhite mbox";
+                  mhttpd_unhide("pySeqStart");
+               } else if (pySequencerJson["state"]["running"]) {
+                  if (pySequencerJson["state"]["paused"]){
+                     mhttpd_unhide("pySeqResume");
+                     py_seq_state = "Paused";
+                     cls = "mblue mbox";
+                  } else if (pySequencerJson["state"]["stop after run"]){
+                     mhttpd_unhide("pySeqStopNow");
+                     mhttpd_unhide("pySeqCancelStop");
+                     mhttpd_unhide("pySeqPause");
+                     py_seq_state = "Running | Stop after run";
+                     cls = "myellow mbox";
+                  } else {
+                     mhttpd_unhide("pySeqStopNow");
+                     mhttpd_unhide("pySeqStopAfterRun");
+                     mhttpd_unhide("pySeqPause");
+                     py_seq_state = "Running";
+                     cls = "mgreen mbox";
+                  }
+               } else if (pySequencerJson["state"]["debug"]) {
+                  py_seq_state = "Debug";
+                  cls = "morange mbox";
+               } else {
+                  py_seq_state = "None";
+               }
+               // console.log(document.getElementById("pySequencerState"));
+               set_if_changed("pySequencerState", py_seq_state);
+               set_class_if_changed("pySeqStateCell", cls);
+            }
+         }
+
+         if (lastMessage.messages.includes("PySequencer")){
+            set_if_changed("pyMsgService", lastMessage.messages);
+         }
+
+         await mjsonrpc_db_get_values([
+            "/MINT/Sequencer/Progress/uBase",
+            "/MINT/Sequencer/Progress/Interposer",
+            "/MINT/Sequencer/Progress/ADC",
+            "/MINT/Sequencer/Progress/Flashers",
+            "/MINT/Sequencer/Progress/Acoustics",
+            "/MINT/Sequencer/Progress/MIST",
+            "/MINT/Sequencer/Progress/Camera",
+            "/MINT/Sequencer/Progress/Dark Rate",
+            "/MINT/Sequencer/Progress/Debug Test",
+         ]).then(function(rpc){
+            var ids = ["uBase","Interposer","ADC","Flashers","Acoustics","MIST","Camera","Dark Rate"];
+            ids.forEach((id, index)=>{
+               switch(rpc.result.data[index][0]){
+                  case "Loaded":
+                     set_class_if_changed(id+" Progress Cell 0", "myellow mbox");
+                     break;
+                  case "In-Progress":
+                     set_class_if_changed(id+" Progress Cell 0", "mblue mbox");
+                     break;
+                  case "Complete":
+                     set_class_if_changed(id+" Progress Cell 0", "mgreen mbox");
+                     break;
+                  case "Error":
+                     set_class_if_changed(id+" Progress Cell 0", "mred mbox");
+                     break;
+                  default:
+                     set_class_if_changed(id+" Progress Cell 0", "mwhite mbox");
+                     break;
+               };
+
+               switch(rpc.result.data[index][1]){
+                  case "Loaded":
+                     set_class_if_changed(id+" Progress Cell 1", "myellow mbox");
+                     break;
+                  case "In-Progress":
+                     set_class_if_changed(id+" Progress Cell 1", "mblue mbox");
+                     break;
+                  case "Complete":
+                     set_class_if_changed(id+" Progress Cell 1", "mgreen mbox");
+                     break;
+                  case "Error":
+                     set_class_if_changed(id+" Progress Cell 1", "mred mbox");
+                     break;
+                  default:
+                     set_class_if_changed(id+" Progress Cell 1", "mwhite mbox");
+                     break;
+               };
+            })
+         }).catch(function(error) {
+            mjsonrpc_error_alert(error);
+         });
+      }
+
+      //"Run Status" -------- enter and refresh data
+      function generateRunStatus() {
+         if (runinfoJson) {
+            if (runinfoJson.hasOwnProperty("transition in progress") && runinfoJson.hasOwnProperty("state")) {
+               var state = runinfoJson["state"];
+               var tip = runinfoJson["transition in progress"];
+
+               if (tip) {
+                  if (tip === TR_STOP)
+                     set_if_changed("runState", "Stopping run");
+                  else if (tip === TR_START)
+                     set_if_changed("runState", "Starting run");
+                  else if (tip === TR_PAUSE)
+                     set_if_changed("runState", "Pausing run");
+                  else if (tip === TR_RESUME)
+                     set_if_changed("runState", "Resuming run");
+                  else
+                     set_if_changed("runState", "Transition in progress");
+
+                  mhttpd_hide("startButton");
+                  mhttpd_hide("stopButton");
+                  mhttpd_hide("pauseButton");
+                  mhttpd_hide("resumeButton");
+                  mhttpd_unhide("cancelButton");
+               } else switch (state) {
+                  case STATE_STOPPED:
+                     set_class_if_changed("runNumberCell", "mred mbox");
+                     set_if_changed("runState", "Stopped");
+                     mhttpd_unhide("startButton");
+                     mhttpd_hide("stopButton");
+                     mhttpd_hide("pauseButton");
+                     mhttpd_hide("resumeButton");
+                     mhttpd_hide("cancelButton");
+                     if (runinfoJson["stop time"]) {
+                        set_if_changed("runStatusStopTime", "Stop: " + runinfoJson["stop time"]);
+                     }
+                     break;
+                  case STATE_PAUSED:
+                     set_class_if_changed("runNumberCell", "myellow mbox");
+                     set_if_changed("runState", "Paused");
+                     mhttpd_hide("startButton");
+                     mhttpd_unhide("stopButton");
+                     mhttpd_hide("pauseButton");
+                     if (showPauseResume) {
+                        mhttpd_unhide("resumeButton");
+                     } else {
+                        mhttpd_hide("resumeButton");
+                     }
+                     mhttpd_hide("cancelButton");
+                     // show running time
+                     if (runinfoJson.hasOwnProperty("start time binary/last_written")) {
+                        //var time=runinfoJson["start time binary/last_written"];
+                        var difftime = Math.round(new Date().getTime() / 1000) - runinfoJson["start time binary/last_written"];
+                        var h = Math.floor(difftime / 3600);
+                        var m = Math.floor(difftime % 3600 / 60);
+                        var s = Math.floor(difftime % 60);
+                        set_if_changed("runStatusStopTime", "Running time: " +
+                           +h + "h"
+                           + ((m < 10) ? "0" + m : m) + "m"
+                           + ((s < 10) ? "0" + s : s) + "s");
+                     }
+                     break;
+                  case STATE_RUNNING:
+                     set_class_if_changed("runNumberCell", "mgreen mbox");
+                     set_if_changed("runState", "Running");
+                     mhttpd_hide("startButton");
+                     mhttpd_unhide("stopButton");
+                     if (showPauseResume) {
+                        mhttpd_unhide("pauseButton");
+                     } else {
+                        mhttpd_hide("pauseButton");
+                     }
+                     mhttpd_hide("resumeButton");
+                     mhttpd_hide("cancelButton");
+                     // show running time
+                     if (runinfoJson.hasOwnProperty("start time binary/last_written")) {
+                        //var time=runinfoJson["start time binary/last_written"];
+                        var difftime = Math.round(new Date().getTime() / 1000) - runinfoJson["start time binary/last_written"];
+                        var h = Math.floor(difftime / 3600);
+                        var m = Math.floor(difftime % 3600 / 60);
+                        var s = Math.floor(difftime % 60);
+                        set_if_changed("runStatusStopTime", "Running time: " +
+                           +h + "h"
+                           + ((m < 10) ? "0" + m : m) + "m"
+                           + ((s < 10) ? "0" + s : s) + "s");
+                     }
+                     break;
+               }
+            }
+
+            if (runinfoJson.hasOwnProperty("run number") && runinfoJson.hasOwnProperty("state")) {
+               set_if_changed("runNumber", runinfoJson["run number"]);
+            }
+
+            if (runinfoJson.hasOwnProperty("start time")) {
+               set_if_changed("runStatusStartTime", "Start: " + runinfoJson["start time"]);
+            }
+
+            if (experimentItemsJson != null) {
+
+               // check if lazy active is in the experiment items list
+               var experimentItemList = Object.keys(experimentItemsJson);
+               if (experimentItemList.length > 3) {
+                  for (var i = 0; i < experimentItemList.length; i = i + 3) {
+
+                     var experimentItem = document.createElement("tr");
+                     experimentItem.id = experimentItemList[i + 2] + "ExperimentItem";
+                     experimentItem.innerHTML =
+                        "<tr><td style=\"text-align:left;\" width=\"30%\" class=\"mtitleCell\">" +
+                        experimentItemsJson[experimentItemList[i]] +
+                        ":</td>";
+
+                     let v = experimentItemsJson[experimentItemList[i + 2]];
+                     if (v === true)
+                        v = '<input type="checkbox" style="pointer-events: none;" checked>';
+                     if (v === false)
+                        v = '<input type="checkbox" style="pointer-events: none;">';
+                     experimentItem.innerHTML +=
+                        "<td id=\"experimentLazyBool\"; style=\"text-align:left;\">" + v + "</td>";
+                     experimentItem.innerHTML += "</tr>";
+                     experimentItem.className = "";
+
+                     if (document.getElementById(experimentItemList[i + 2] + "ExperimentItem") != null) {
+                        if (document.getElementById(experimentItemList[i + 2] + "ExperimentItem").innerHTML != experimentItem.innerHTML) {
+                           document.getElementById(experimentItemList[i + 2] + "ExperimentItem").innerHTML = experimentItem.innerHTML;
+                        }
+                     } else {
+                        document.getElementById("runStatusExperimentItems").appendChild(experimentItem);
+                     }
+
+                  }
+               }
+
+            }
+
+         }
+
+         if (alarm["alarm_system_active"]) {
+            set_if_changed("runStatusAlarm", "<a href='?cmd=Alarms'>" + "Alarms: On" + "</a>");
+            set_class_if_changed("runStatusAlarm", "mgreen mbox");
+         } else {
+            set_if_changed("runStatusAlarm", "<a href='?cmd=Alarms'>" + "Alarms: Off" + "</a>");
+            set_class_if_changed("runStatusAlarm", "mred mbox");
+         }
+
+         if (sequencerJson) {
+            if (sequencerJson.hasOwnProperty("running")) {
+               if (sequencerJson["running"]) {
+                  document.getElementById("runStatusSequencer").innerHTML = "Restart: Sequencer";
+               } else {
+                  if (loggerJson["auto restart"] === true) {
+                     var text = "<a href=\"#\" onclick=\"dlgOdbEdit('/Logger/Auto restart')\">Restart: On</a>";
+                     if (document.getElementById("runStatusSequencer").innerHTML !== text) {
+                        document.getElementById("runStatusSequencer").innerHTML = text;
+                        document.getElementById("runStatusSequencer").className = "mgreen mbox";
+                     }
+                  } else {
+                     var text = "<a href=\"#\" onclick=\"dlgOdbEdit('/Logger/Auto restart')\">Restart: Off</a>";
+                     if (document.getElementById("runStatusSequencer").innerHTML !== text) {
+                        document.getElementById("runStatusSequencer").innerHTML = text;
+                        document.getElementById("runStatusSequencer").className = "myellow mbox";
+                     }
+                  }
+               }
+            }
+         }
+
+         if (loggerBool["status"] == 1) {
+            if (loggerJson.hasOwnProperty("data dir")) {
+               set_if_changed("runStatusLogger", "Data dir: " + loggerJson["data dir"]);
+               if (loggerJson["write data"] == true)
+                  set_class_if_changed("runStatusLogger", "");
+               else
+                  set_class_if_changed("runStatusLogger", "myellow mbox");
+            }
+         } else {
+            set_if_changed("runStatusLogger", "Logger not running");
+            set_class_if_changed("runStatusLogger", "mred mbox");
+         }
+
+         set_if_changed("msgService", lastMessage.messages);
+      }
+
+
+      function clientExists(clients, name) {
+         for (var key in clients) {
+            if (clients[key].hasOwnProperty("name")) {
+               if (clients[key].name === name) return true;
+            }
+         }
+         return false;
+      }
+
+      function generateEquipmentTable(clients) {
+
+         // If equipmentNames is not valid, create empty table and return.
+         if (equipmentNames == null) {
+            document.getElementById("equipmentList").innerHTML = equipmentTableHtml;
+            return;
+         }
+
+         if (equipmentNames.length != previous_equipment_names.length) {
+            document.getElementById("equipmentList").innerHTML = equipmentTableHtml;
+            //console.log("Reset equipment table: " + equipmentNames.length + " vs " + previous_equipment_names.length);
+            previous_equipment_names = equipmentNames;
+         }
+
+         for (var i = 0; i < equipmentNames.length; i++) {
+            let eqn = equipmentNames[i];
+            let eqid = "equipment_" + eqn;
+            let e = document.getElementById(eqid);
+            if (!e) {
+               e = document.createElement("tr");
+               e.id = eqid;
+
+               var s;
+
+               s = document.createElement("td");
+               s.id = eqid + "_name";
+               s.align = "center";
+               s.innerHTML = "<a href=\"?cmd=eqtable&amp;eq="+encodeURIComponent(eqn)+"\">"+eqn+"</a>";
+               e.appendChild(s);
+
+               s = document.createElement("td");
+               s.id = eqid + "_status";
+               s.align = "center";
+               e.appendChild(s);
+
+               s = document.createElement("td");
+               s.id = eqid + "_events";
+               s.align = "center";
+               e.appendChild(s);
+
+               s = document.createElement("td");
+               s.id = eqid + "_eps";
+               s.align = "center";
+               e.appendChild(s);
+
+               s = document.createElement("td");
+               s.id = eqid + "_bps";
+               s.align = "center";
+               e.appendChild(s);
+
+               document.getElementById("equipmentList").appendChild(e);
+            }
+            
+            try {
+
+               let eqc = equipmentCommonData[i];
+
+               if (!eqc) {
+                  continue;
+               }
+
+               let status_text = "";
+               let status_class = "";
+               let status_bg = "";
+
+               if (!eqc["enabled"]) {
+                  status_text = "Disabled";
+                  status_class = "yellowLight";
+               } else if (eqc["frontend name"].length > 0 &&
+                  !clientExists(clients, eqc["frontend name"])) {
+                  status_text = "Frontend stopped";
+                  status_class = "redLight";
+               } else if (eqc["status"].length < 1) {
+                  status_text = eqc["frontend name"] + "@" + eqc["frontend host"];
+                  status_class = "greenLight";
+               } else {
+                  status_text = eqc["status"];
+                  if (eqc["status color"].indexOf("Light") != -1) {
+                     status_class = eqc["status color"];
+                  } else {
+                     status_class = "Light";
+                     status_bg = eqc["status color"];
+                  }
+               }
+
+               var className = "equipmentRow";
+               var unhidden = document.getElementById("hide").innerText === "-";
+               if (eqc["hidden"]) {
+                  className += " hiddenEquip";
+               }
+
+               var style_display;
+               if (eqc["hidden"] && !unhidden)
+                  style_display = "none";
+               else
+                  style_display = "table-row";
+
+               let eventsNum = 0;
+               let mb = 0;
+               let eps = 0;
+
+               let eqs = equipmentStatData[i];
+
+               if (eqs) {
+                  eventsNum = eqs["events sent"];
+                  if (eventsNum > 1E9) {
+                        eventsNum = (eventsNum / 1E9).toFixed(3) + "G";
+                  } else if (eventsNum > 1E6) {
+                        eventsNum = (eventsNum / 1E6).toFixed(3) + "M";
+                  } else {
+                        eventsNum = eventsNum.toFixed(0);
+                  }
+                  
+                  mb = eqs["kbytes per sec."] / 1000.0;
+                  eps = eqs["events per sec."];
+               }
+
+               set_if_changed(eqid + "_status", status_text);
+               set_class_if_changed(eqid + "_status", status_class);
+               set_bg_if_changed(eqid + "_status", status_bg);
+               set_if_changed(eqid + "_events", eventsNum);
+               set_if_changed(eqid + "_eps", eps.toFixed(1));
+               set_if_changed(eqid + "_bps", mb.toFixed(3));
+
+               mhttpd_set_style_display(e, style_display);
+               mhttpd_set_className(e, className);
+               //console.log("eq " + eqn + " AAA " + eventsNum);
+            } catch (err) {
+               // invalid ODB equipment entry: just skip equipment
+               console.log("Error: Equipment \"" + equipmentNames[i] + "\" has invalid ODB structure");
+            }
+         }
+      }
+
+      function isClientPresent(client_name) {
+         for (var key in clientsJson) {
+            if (clientsJson[key].hasOwnProperty("name")) {
+               if (clientsJson[key].name.indexOf(client_name) > -1) return true;
+            }
+         }
+         return false;
+      }
+
+      function generateLogChannel() {
+
+         if (LazyJson !== null) {
+            if ((Object.keys(logChannelJson).length / 2 != document.getElementsByClassName("logChannel").length) || (Object.keys(LazyJson).length / 2 != document.getElementsByClassName("logChannelLazy").length)) {
+               document.getElementById("logChannel").innerHTML = logChannelTableHtml;
+            }
+         }
+
+         if (document.getElementById("logChannelFirstPart") === null) {
+            document.getElementById("logChannel").innerHTML += firstLogChannelHtml;
+         }
+
+         for (var element in logChannelJson) {
+            if (logChannelJson[element].settings && logChannelJson[element].statistics) {
+               var currentChannel = logChannelJson[element];
+
+
+               var compressionRatio;
+               if (currentChannel["statistics"]["bytes written uncompressed"] > 0) {
+                  compressionRatio = currentChannel["statistics"]["bytes written"] / currentChannel["statistics"]["bytes written uncompressed"];
+                  compressionRatio = compressionRatio * 100;
+               } else {
+                  compressionRatio = 0;
+               }
+
+
+               //Disk Level Display
+               var diskLevelHtml;
+               var diskLevelColor;
+               var level = currentChannel["statistics"]["disk level"];
+               if (level >= 0.9) {
+                  diskLevelColor = "var(--red)";
+               } else if (level >= 0.7) {
+                  diskLevelColor = "var(--myellow)";
+               } else {
+                  diskLevelColor = "var(--mgreen)";
+               }
+               diskLevelHtml = document.createElement("td");
+               //diskLevelHtml.className = class_name;
+               var outerDiv = document.createElement("div");
+               outerDiv.style.textAlign = "left";
+               outerDiv.style.display = "block";
+               outerDiv.style.width = "100%";
+               outerDiv.style.height = "100%";
+               outerDiv.style.position = "relative";
+               outerDiv.style.border = "1px solid black";
+               var innerDiv = document.createElement("div");
+               innerDiv.style.display = "inline-block";
+               innerDiv.style.backgroundColor = diskLevelColor;
+               innerDiv.style.borderRight = "1px solid black";
+               innerDiv.style.width = (100 * level).toFixed(0) + "%";
+               innerDiv.style.height = "100%";
+               innerDiv.style.position = "relative";
+               innerDiv.style.paddingTop = "2px";
+               innerDiv.innerHTML = "&nbsp" + (level * 100).toFixed(1) + "%";
+               outerDiv.appendChild(innerDiv);
+               diskLevelHtml.appendChild(outerDiv);
+
+               var cl = "myellow mbox";
+               if (loggerJson["write data"] == true &&
+                  currentChannel["settings"]["active"] == true)
+                  cl = "mgreen mbox";
+               var ccl = "mgreen mbox";
+               if (loggerBool["status"] != 1) ccl = "mred mbox";
+               var html = "<td colspan=\"2\" class=\"" + ccl + "\">" +
+                  "<a href=\"?cmd=odb&amp;odb_path=Logger/Channels/" + element + "/Settings\">" +
+                  "#" + element + ": " + "</a>" +
+                  currentChannel["settings"]["current filename"] +
+                  "</td>" +
+
+                  //Events
+                  "<td align=\"center\">" +
+                  currentChannel["statistics"]["events written"] +
+                  "</td>" +
+
+                  //Mega Bytes (=1000*1000 Bytes) Written
+                  "<td align=\"center\">" +
+                  (currentChannel["statistics"]["bytes written"] / 1000 / 1000).toFixed(3) +
+                  "</td>" +
+
+                  //Compr.
+                  "<td align=\"center\">" +
+                  compressionRatio.toFixed(1) + "%" +
+                  "</td>" +
+
+                  //Disk Level
+                  diskLevelHtml.outerHTML;
+
+
+               if (!document.getElementById(element + "channel")) {
+                  var logChannelRow = document.createElement("tr");
+                  logChannelRow.id = element + "channel";
+                  logChannelRow.className = "logChannel";
+                  logChannelRow.innerHTML = html;
+                  document.getElementById("logChannel").appendChild(logChannelRow);
+               } else {
+                  mhttpd_set_innerHTML(document.getElementById(element + "channel"), html);
+               }
+            }
+         }
+
+         if (document.getElementById("logChannelSecondPart") === null) {
+            document.getElementById("logChannel").innerHTML += secondLogChannelHtml;
+         }
+
+         for (var element in LazyJson) {
+            if (LazyJson[element].settings && LazyJson[element].statistics) {
+               var currentLazy = LazyJson[element];
+               var cl = "mred mbox";
+               if (isClientPresent("Lazy_")) cl = "mgreen mbox";
+               var html = "<td colspan=\"2\" class=\"" + cl + "\">" +
+                  "<a href=\"?cmd=odb&amp;odb_path=Lazy/" + element + "/Settings\">" +
+                  element + "</a>" +
+                  "</td>" +
+                  "<td align=\"center\">" +
+                  currentLazy["statistics"]["copy progress (%)"].toFixed(1) + "%" +
+                  "</td>" +
+                  "<td align=\"center\">" +
+                  currentLazy["statistics"]["backup file"] +
+                  "</td>" +
+                  "<td align=\"center\">" +
+                  currentLazy["statistics"]["number of files"] +
+                  "</td>" +
+                  "<td align=\"center\">" +
+                  currentLazy["statistics"]["backup status (%)"].toFixed(1) + "%" +
+                  "</td>";
+
+               if (!document.getElementById(element + "channelLazy")) {
+                  var logChannelLazy = document.createElement("tr");
+                  logChannelLazy.id = element + "channelLazy";
+                  logChannelLazy.className = "logChannelLazy";
+                  logChannelLazy.innerHTML = html;
+                  document.getElementById("logChannel").appendChild(logChannelLazy);
+               } else {
+                  mhttpd_set_innerHTML(document.getElementById(element + "channelLazy"), html);
+               }
+            }
+         }
+      }
+
+      function generateClientsTable() {
+
+         var clientTable = document.createElement("tr");
+         var row = document.createElement("tr");
+         clientTable.appendChild(row);
+         row = document.createElement("tr");
+         var header = document.createElement("th");
+         header.colSpan = 6;
+         header.className = "mtableheader";
+         header.innerText = "Clients";
+         row.appendChild(header);
+         clientTable.appendChild(row);
+
+         var clientNames = new Array();
+         for (var key in clientsJson) {
+            if (clientsJson[key].hasOwnProperty("name"))
+               clientNames.push(clientsJson[key]);
+         }
+         clientNames.forEach(function (element) {
+            if (currentClientList.indexOf(element) != -1) {
+               clientNames.splice(clientNames.i, 1)
+            }
+         }, this);
+         var numOfClientRows = Math.ceil(clientNames.length / 3);
+
+         //loop i for number of rows
+         var currentClient = 0;
+
+
+         for (var i = 0; i < numOfClientRows; i++) {
+
+            var oneClientRow = document.createElement("tr");
+            oneClientRow.className = "clientRow mtable";
+            oneClientRow.id = clientNames[currentClient]["name"] + "client";
+            //loop j for number of columns
+            for (var j = 0; j < 3; j++) {
+               if (currentClient < clientNames.length) {
+                  oneClientRow.innerHTML += "<td colspan=\"2\" align=\"center\">" +
+                     clientNames[currentClient]["name"] +
+                     " [" + clientNames[currentClient]["host"] + "]" +
+                     "</td>";
+               }
+               currentClient++;
+            }
+
+            clientTable.appendChild(oneClientRow);
+         }
+
+         mhttpd_set_innerHTML(document.getElementById("clientsTable"), "<tbody>" + clientTable.innerHTML + "</tbody>");
+      }
+
+
+      // set title
+      if (experimentItemsJson) {
+         if (document.title != experimentName + " status") {
+            document.title = experimentName + " status";
+         }
+      }
+
+      //triggers the not running alarms
+      triggerAlarms();
+
+      //call generate functions
+      generateRunStatus();
+      generatePySequencerStatus();
+
+      generateEquipmentTable(clientsJson);
+
+      if (logChannelJson != null)
+         generateLogChannel();
+
+      if (clientsJson != null)
+         generateClientsTable();
+
+   }
+
+
+   function hideEquipments() {
+      var hideButton = document.getElementById("hide");
+      hideButton.href = 'javascript:unhideEquipments()';
+      hideButton.innerText = '+';
+      if (document.getElementsByClassName("hiddenEquip") != null) {
+         Array.prototype.forEach.call(document.getElementsByClassName("hiddenEquip"), function (element) {
+            element.style.display = "none";
+         });
+      }
+   }
+
+   function unhideEquipments() {
+      var hideButton = document.getElementById("hide");
+      hideButton.href = 'javascript:hideEquipments()';
+      hideButton.innerText = '-';
+      if (document.getElementsByClassName("hiddenEquip") != null) {
+         Array.prototype.forEach.call(document.getElementsByClassName("hiddenEquip"), function (element) {
+            element.style.display = "table-row";
+         });
+      }
+   }
+
+   // Global variables for caching the current list of MIDAS equipments
+   var statusGlobalSpace = {
+      cachedEquipmentList: null
+   }
+
+   // perform the main XHR and cache the list of MIDAS equipment for next XHR
+   function updateXHR() {
+
+      var paths = ["/Experiment/Status items", "/Logger/Channels", "/System/Clients", "/Runinfo", "Sequencer/State", "/Logger", "/Lazy", "/Experiment/Name", "/Experiment/Pause-Resume Buttons", "/PySequencer"];
+
+      //push all equipment names into an Array of Promises
+      if (statusGlobalSpace.cachedEquipmentList != null) {
+         var equipmentStatList = statusGlobalSpace.cachedEquipmentList.map(function (element) {
+            return "/Equipment/" + element + "/statistics";
+         });
+
+         var equipmentCommonList = statusGlobalSpace.cachedEquipmentList.map(function (element) {
+            return "/Equipment/" + element + "/common";
+         });
+      } else {
+         var equipmentStatList = [];
+         var equipmentCommonList = [];
+      }
+
+      // Make the main JSON-RPC request
+      mjsonrpc_send_request([
+         mjsonrpc_make_request("db_get_values", {"paths": paths}),
+         mjsonrpc_make_request("get_alarms", {"get_all": true}),
+         mjsonrpc_make_request("cm_exist", "{ \"name\": \"Logger\" }"),
+         mjsonrpc_make_request("cm_msg_retrieve", {"min_messages": 1}),
+         mjsonrpc_make_request("db_get_values", {"paths": equipmentStatList}),
+         mjsonrpc_make_request("db_get_values", {"paths": equipmentCommonList}),
+         mjsonrpc_make_request("db_ls", {"paths": ["equipment"]})
+      ]).then(function (rpc) {
+
+         // update the webpage
+         callback(
+            rpc[0]["result"], 
+            rpc[1]["result"], 
+            rpc[2]["result"], 
+            rpc[3]["result"], 
+            statusGlobalSpace.cachedEquipmentList,
+            rpc[4]["result"]["data"], 
+            rpc[5]["result"]["data"]
+         );
+
+         // cache the results of the "db_ls /Equipment" RPC for the next RPC
+         if (rpc[6]["result"]["data"][0] != null) {
+            statusGlobalSpace.cachedEquipmentList = Object.keys(rpc[6]["result"]["data"][0]);
+         } else {
+            statusGlobalSpace.cachedEquipmentList = null;
+         }
+
+      }).then(function (x) {
+         // show the page only after all contents are loaded
+         document.getElementById('statusTable').style.display = "table";
+      //   document.getElementById('updateStatus').style.display = "none";
+      }).catch(function (error) {
+         document.getElementById('updateStatus').innerHTML = "RWE: RPC or JS error: " + mjsonrpc_decode_error(error);
+      //   document.getElementById('updateStatus').style.display = "block";
+      });
+   }
+
+
+   // Main function called on each update
+   function update(firstTimeCalled) {
+
+      // For first call we chain JSON-RPC requests; first get equipment list: then do main JSON-RPC for rest of information.
+      if (firstTimeCalled == true) {
+
+         mjsonrpc_db_ls(["Equipment"]).then(function (equipmentListData) {
+            if (equipmentListData.result.data[0] != null) {
+               statusGlobalSpace.cachedEquipmentList = Object.keys(equipmentListData.result.data[0]);
+            } else {
+               statusGlobalSpace.cachedEquipmentList = null;
+            }
+
+            updateXHR();
+
+         }).catch(function (error) {
+            document.getElementById('updateStatus').innerHTML = "RWE: RPC or JS error: " + mjsonrpc_decode_error(error);
+         //   document.getElementById('updateStatus').style.display = "block";
+         });
+      } else { // subsequent requests we just use the cached equipment list from last time to make main request
+
+         updateXHR();
+
+      }
+   }
+
+   // Slightly different set of JSON-RPC requests on initial load.
+   function update_periodic(firstTimeCalled = false) {
+      clearTimeout(update_timer_id);
+      if (document.hidden) {
+         // don't update page if hidden
+         setTimeout('update_periodic()', update_period);
+         return;
+      }
+      var update_period = 1000;
+      update(firstTimeCalled);
+      update_timer_id = setTimeout('update_periodic()', update_period);
+   }
+
+   update_periodic(true);
+</script>
+</body>
+</html>

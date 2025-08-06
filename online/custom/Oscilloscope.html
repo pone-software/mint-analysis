@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Oscilloscope Control</title>
+  <script src="controls.js"></script>
+  <script src="midas.js"></script>
+  <script src="mhttpd.js"></script>
+  <script src="mhistory.js"></script>
+
+  <style>
+
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      background-color: #f4f4f4;
+    }
+
+    h2, h3 {
+      margin-top: 0.5em;
+    }
+
+    .container {
+      display: flex;
+      gap: 30px;
+    }
+    
+    .red-circle {
+      width: 100px;
+      height: 100px;
+      background-color: red;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .green-circle {
+      width: 100px;
+      height: 100px;
+      background-color: green;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+
+    .card {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      padding: 20px;
+      flex: 1;
+    }
+
+    input, button {
+      margin: 5px 0;
+      padding: 6px 12px;
+      font-size: 14px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+    }
+
+    button {
+      background-color: #007BFF;
+      color: white;
+      cursor: pointer;
+      border: none;
+    }
+
+    button:hover {
+      background-color: #0056b3;
+    }
+
+    .input-group {
+      margin-bottom: 10px;
+    }
+
+    .logo-container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .logo-container img {
+      transform: rotate(10deg);
+      width: 100px;
+    }
+
+    .logo-right {
+      width: 80px;
+      transform: none;
+    }
+
+    .footer {
+      margin-top: 40px;
+    }
+
+    .troubleshooting {
+      font-size: 14px;
+      background: #fff;
+      padding: 15px;
+      border-radius: 10px;
+      box-shadow: 0 1px 6px rgba(0,0,0,0.1);
+    }
+
+    .instructions p {
+      margin: 4px 0;
+    }
+
+    a {
+      color: #007BFF;
+    }
+
+    .btn-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .btn-grid button {
+      flex: 1 1 30%;
+    }
+  </style>
+</head>
+
+<body class="mcss" onload="GetValues(); GetValuesScopePage(); GetScopeIP(); ReconnectScope(); TriggerDropdown()">
+
+
+  <div class="logo-container">
+    <h2><u>Make sure you're running the Python script</u></h2>
+    <img src="https://www.pacific-neutrino.org/_assets/0933568babaf026dff6fc6fbb3f99a8b/Images/Logos/P-ONE_Rainbow-01-360p.jpg" alt="P-ONE">
+  </div>
+
+  <div class="container">
+    <!-- Writing Panel -->
+    <div class="card">
+      <h2>Function Generator Control</h2>
+      <div class="btn-grid">
+        <button onclick="TurnOn(); GetValuesScopePage();">Turn On</button>
+        <button onclick="TurnOff(); GetValuesScopePage();">Turn Off</button>
+        <button onclick="Sync(); GetValuesScopePage();">Sync with ODB</button>
+      </div>
+
+      <h3>Shape</h3>
+      <div class="btn-grid">
+        <button onclick="WaveUpdateSIN(); GetValuesScopePage();">SIN</button>
+        <button onclick="WaveUpdateSQU(); GetValuesScopePage();">SQUARE</button>
+        <button onclick="WaveUpdateTRI(); GetValuesScopePage();">TRIANGLE</button>
+        <button onclick="WaveUpdatePULSE(); GetValuesScopePage();">PULSE</button>
+        <button onclick="WaveUpdateRAMP(); GetValuesScopePage();">RAMP</button>
+        <button onclick="WaveUpdateSINC(); GetValuesScopePage();">SINC</button>
+        <button onclick="WaveUpdateEXP(); GetValuesScopePage();">EXPONENTIAL</button>
+      </div>
+
+      <h3>Parameters</h3>
+      <div class="input-group">
+        <input type="number" id="ChannelBox" placeholder="Channel">
+        <button onclick="SetChannel(document.getElementById('ChannelBox').value); GetValuesScopePage();">Set Channel</button>
+      </div>
+      <div class="input-group">
+        <input type="number" id="FrequencyBox" placeholder="Frequency (Hz)">
+        <button onclick="SetFreq(document.getElementById('FrequencyBox').value); GetValuesScopePage();">Set Frequency</button>
+      </div>
+      <div class="input-group">
+        <input type="number" id="VoltageBox" placeholder="Voltage (V)">
+        <button onclick="SetVolt(document.getElementById('VoltageBox').value); GetValuesScopePage();">Set Voltage</button>
+      </div>
+      <div class="input-group">
+        <input type="number" id="GainBox" placeholder="Gain">
+        <button onclick="SetGain(document.getElementById('GainBox').value); GetValuesScopePage();">Set Gain</button>
+      </div>
+    </div>
+
+    <!-- Reading Panel -->
+    <div class="card">
+      <h2>Oscilloscope Reading</h2>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <p><span title="Typically 11.102.0.106"><u>Oscilloscope IP:</u></span></p>
+        <input type="text" id="scopeIP"> 
+        <button onclick="SetScopeIP(document.getElementById('scopeIP').value)">Set Oscilloscope IP</button>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <!-- <p>Oscilloscope Status:</p> -->
+        <p id="scopeStatus"></p>
+        <button onclick="ReconnectScope()">Refresh Scope Connection</button>
+      </div>
+      <br>
+      <button onclick="Autoscale()">Autoscale</button>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <button onclick="GetValuesScopePage()">Get Scope Parameters</button><br><br>
+        <button onclick="StartRefreshScope()">Start Auto Refreshing</button>
+        <button onclick="StopRefreshScope()">Stop Auto Refreshing</button>
+        <p id="ScopeTimerText" style="margin: 0;">Time Since Last Probe: --</p>
+      </div>
+      <p>Oscilloscope readings from the ODB:</p>
+      <p id="OnOffText"> Function Generator Status: --</p>
+      <p id="shapeText"> Function Generator Shape: --</p>
+      <p id="channelText"> Which Oscilloscope Channel: --</p>
+      <p id="freqText"> Function Generator Frequency: --</p>
+      <p id="voltText"> Function Generator Voltage: --</p>
+      <p id="gainText"> Function Generator Gain: --</p>
+      <p id="autorefreshscope"> Auto Refresh On</p>
+      <select id="TriggerDropdownElement" onchange="TriggerDropdown(this.value)">
+        <option value="" disabled selected>Slope to be searched for</option>
+        <option value="Rising">Rising</option>
+        <option value="Falling">Falling</option>
+        <option value="Either">Either</option>
+      </select>
+      <h2>Get Data on the PC running your Python Script</h2>
+      <input type="text" id="DataBox" placeholder="File Name">
+      <button onclick="SetData(document.getElementById('DataBox').value)">Get Data and Update Plot</button>
+      <img id="dataplot" src ="plots/scopefigure.png" alt="Downsampled plot (100 by default)" width=600>
+
+      
+
+    </div>
+    <div class = "card">
+      <h2> Physical Readings of the Fridge</h2>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <button onclick="GetValues()">Get Physical Readings</button><br><br>
+        <button onclick="StartRefreshFridge()">Start Auto Refreshing</button>
+        <button onclick="StopRefreshFridge()">Stop Auto Refreshing</button>
+        <p id="ParamTimerText" style="margin: 0;">Time Since Last Update: --</p>
+      </div>
+      <p id="tempDisplay">Temperature: --</p>
+      <p id="presDisplay">Pressure: --</p>
+      <p id="humDisplay">Humidity: --</p>
+      <p id="lightDisplay">Light: --</p>
+      <p id="soundDisplayFreq">Sound Frequency: --</p>
+      <p id="soundDisplayVol">Sound Volume: --</p>
+      <p id="displayxVibFreq">X Vibration Frequency: --</p>
+      <p id="displayxVibVol">X Vibration Amplitude: --</p>
+      <p id="displayyVibFreq">Y Vibration Frequency: --</p>
+      <p id="displayyVibVol">Y Vibration Amplitude: --</p>
+      <p id="displayzVibFreq">Z Vibration Frequency: --</p>
+      <p id="displayzVibVol">Z Vibration Amplitude: --</p>
+      <p id="autorefreshphysical">Auto Refresh On</p>
+
+    </div>
+  </div>
+
+
+  <div class="footer">
+    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/b/b7/SFU-block-logo.svg/2560px-SFU-block-logo.svg.png" class="logo-right" alt="SFU Logo">
+
+    <div class="card instructions">
+      <h3>Instructions</h3>
+      <p>1. Connect to the <b>mint-daq</b> network</p>
+      <p>2. Activate <b>mint_venv</b></p>
+      <p>3. Ensure a run is in progress</p>
+      <p>4. Run <code>OscilloscopeFrontEnd.py</code></p>
+      <p>5. Confirm ODB variables are in correct path</p>
+    </div>
+
+    <div class="troubleshooting">
+      <h3>Troubleshooting</h3>
+      <p>? Paths in HTML and Python must match</p>
+      <p>? Oscilloscope must be on and networked: <a href="https://scp-8417-00.phys.sfu.ca/net_monitor/">SFU Net Monitor</a></p>
+      <p>? IP: 11.102.0.106 (change in ODB if different)</p>
+      <p>? Ensure function generator cable is connected</p>
+    </div>
+
+    <p style="font-family: 'Comic Sans MS'; margin-top: 10px;">
+      Press <a href="mailto:bna45@sfu.ca">this text</a> to send a complaint (or compliment) to Ben
+    </p>
+  </div>
+
+  <!-- JavaScript functions remain unchanged -->
+  <script>
+    var scopeCounter=0;
+    var paramCounter=0;
+    valueInterval = setInterval(GetValues, 30000);
+    scopeInterval = setInterval(GetValuesScopePage, 10000);
+    setInterval(ScopeCount, 100);
+    setInterval(ParamCount, 100);
+    setInterval(ReconnectScope, 10000);
+
+    function TriggerDropdown(value) {
+
+      if (value=="Rising")
+      {
+        mjsonrpc_db_paste(["Equipment/Oscilloscope/Variables/TriggerSlope"],["Rising"])
+      }
+      if (value=="Falling")
+      {
+        mjsonrpc_db_paste(["Equipment/Oscilloscope/Variables/TriggerSlope"],["Falling"])
+      }
+      if (value=="Either")
+      {
+        mjsonrpc_db_paste(["Equipment/Oscilloscope/Variables/TriggerSlope"],["Either"])
+      }       
+    }
+
+    function StopRefreshScope() {
+      clearInterval(scopeInterval)
+      document.getElementById("autorefreshscope").innerText = "Auto Refresh Off";  
+      document.getElementById("autorefreshscope").style.color="red"  
+    }
+    function StartRefreshScope() {
+      if (scopeInterval){
+        clearInterval(scopeInterval)
+      }
+      scopeInterval = setInterval(GetValuesScopePage, 10000)
+      document.getElementById("autorefreshscope").innerText = "Auto Refresh On"; 
+      document.getElementById("autorefreshscope").style.color="green"     
+    }
+    function StopRefreshFridge() {
+      clearInterval(valueInterval)
+      document.getElementById("autorefreshphysical").innerText = "Auto Refresh Off"; 
+      document.getElementById("autorefreshphysical").style.color="red"     
+    }
+    function StartRefreshFridge() {
+      if (valueInterval){
+        clearInterval(valueInterval)
+      }
+      valueInterval = setInterval(GetValues, 30000)
+      document.getElementById("autorefreshphysical").innerText = "Auto Refresh On"; 
+      document.getElementById("autorefreshphysical").style.color="green"        
+    }
+    function GetScopeIP() { 
+      mjsonrpc_db_get_values(["Equipment/Oscilloscope/Variables/TriggerSlope"])
+        .then((response) => {
+          const TriggerDropdownV = response.result.data[0];
+          const dropdown = document.getElementById("TriggerDropdownElement");
+          dropdown.value = TriggerDropdownV;
+    
+          // Manually call the handler if you want logic to run immediately
+          TriggerDropdown(TriggerDropdownV);
+        })
+        .catch((error) => {
+          console.error("Failed to get The Trigger Dropdown Menu Value", error);
+        });
+      mjsonrpc_db_get_values(["Equipment/Oscilloscope/Variables/DeviceIP"])
+        .then((response) => {
+          const scopeIP = response.result.data[0];
+          document.getElementById("scopeIP").value=scopeIP;
+        })
+        .catch((error) => {
+          console.error("Failed to get Oscilloscope IP:", error);
+        });
+      }
+    function ReconnectScope() { 
+      mjsonrpc_db_paste(["Equipment/Oscilloscope/Variables/Heartbeat"],[1])
+      const scopeStatusVar = document.getElementById("scopeStatus");
+      mjsonrpc_db_get_values(["Equipment/Oscilloscope/Variables/Connected"])
+        .then((response) => {
+          const scopestatus = response.result.data[0];
+          if (scopestatus==true)
+          {
+            scopeStatusVar.innerText=("Oscilloscope Connected")
+            scopeStatusVar.style.color="green";
+          }
+          else{
+            scopeStatusVar.innerText=("Oscilloscope Disconnected")
+            scopeStatusVar.style.color="red";
+          }
+        })
+      fetch('plots/scopefigure.png')
+        .then(response => {
+          if (response.ok) {
+            const img=document.getElementById("dataplot");
+            const timestamp = new Date().getTime(); // prevents caching
+
+            img.src = "plots/scopefigure.png?t=" + timestamp;
+            console.log("File exists!");
+          } else {
+            console.log("File does not exist (404).");
+          }
+        })
+        .catch(error => {
+          console.error("Error fetching file:", error);
+        });
+
+      }
+
+    function SetScopeIP(ip) { mjsonrpc_db_paste(["Equipment/Oscilloscope/Variables/DeviceIP"], [ip]) }
+    function WaveUpdateSIN() { mjsonrpc_db_paste(["Equipment/Oscilloscope/Variables/Shape"], ["SIN"]) }
+    function WaveUpdateSQU() { mjsonrpc_db_paste(["Equipment/Oscilloscope/Variables/Shape"], ["SQU"]) }
+    function WaveUpdateTRI() { mjsonrpc_db_paste(["Equipment/Oscilloscope/Variables/Shape"], ["TRI"]) }
+    function WaveUpdatePULSE() { mjsonrpc_db_paste(["Equipment/Oscilloscope/Variables/Shape"], ["PULS"]) }
+    function WaveUpdateRAMP() { mjsonrpc_db_paste(["Equipment/Oscilloscope/Variables/Shape"], ["RAMP"]) }
+    function WaveUpdateSINC() { mjsonrpc_db_paste(["Equipment/Oscilloscope/Variables/Shape"], ["SINC"]) }
+    function WaveUpdateEXP() { mjsonrpc_db_paste(["Equipment/Oscilloscope/Variables/Shape"], ["EXP"]) }
+    function Sync() { mjsonrpc_db_paste(["Equipment/Oscilloscope/Variables/Sync"], [1]) }
+    function SetFreq(f) { mjsonrpc_db_paste(["Equipment/Oscilloscope/Variables/Frequency"], [f]) }
+    function SetVolt(v) { mjsonrpc_db_paste(["Equipment/Oscilloscope/Variables/Voltage"], [v]) }
+    function SetGain(g) { mjsonrpc_db_paste(["Equipment/Oscilloscope/Variables/Gain"], [g]) }
+    function SetChannel(c) { mjsonrpc_db_paste(["Equipment/Oscilloscope/Variables/Channel"], [c]) }
+    function SetData(d) { mjsonrpc_db_paste(["Equipment/Oscilloscope/Variables/DataPath"], [d]) }
+    function GetParams() { mjsonrpc_db_paste(["Equipment/Oscilloscope/Variables/Checking"], [1]) }
+    function Autoscale() { mjsonrpc_db_paste(["Equipment/Oscilloscope/Variables/Autoscaling"], [1]) }
+    function TurnOn() { mjsonrpc_db_paste(["Equipment/Oscilloscope/Variables/FunctionGenerator"], [1]) }
+    function TurnOff() { mjsonrpc_db_paste(["Equipment/Oscilloscope/Variables/FunctionGenerator"], [0]) }
+    var oldTemperature = 0;
+    function GetValues() {
+      mjsonrpc_db_get_values(["Equipment/FridgeSensor/Variables/Temperature"])
+        .then((response) => {
+          const temperature = response.result.data[0];
+          document.getElementById("tempDisplay").innerText = "Temperature: " + temperature + " \u00B0 C";
+        if (oldTemperature!=temperature) {
+          paramCounter=0;
+        }
+        oldTemperature=temperature
+
+        })
+                
+        .catch((error) => {
+          console.error("Failed to get temperature:", error);
+        });
+      mjsonrpc_db_get_values(["Equipment/FridgeSensor/Variables/Pressure"])
+        .then((response) => {
+          const pressure = response.result.data[0];
+          document.getElementById("presDisplay").innerText = "Pressure: " + pressure + " hPa";
+        })
+        .catch((error) => {
+          console.error("Failed to get pressure:", error);
+        });
+      mjsonrpc_db_get_values(["Equipment/FridgeSensor/Variables/Humidity"])
+        .then((response) => {
+          const humidity= response.result.data[0];
+          document.getElementById("humDisplay").innerText = "Humidity: " + humidity+ " RH";
+        })
+        .catch((error) => {
+          console.error("Failed to get humidity:", error);
+        });
+      mjsonrpc_db_get_values(["Equipment/FridgeSensor/Variables/Light"])
+        .then((response) => {
+          const light = response.result.data[0];
+          document.getElementById("lightDisplay").innerText = "Light: " + light + " This seems to always say 0";
+        })
+        .catch((error) => {
+          console.error("Failed to get light:", error);
+        });
+      mjsonrpc_db_get_values(["Equipment/FridgeSensor/Variables/Sound"])
+        .then((response) => {
+          const sound = response.result.data[0];
+          const soundFreq=sound[0]
+          const soundVol=sound[1]
+          document.getElementById("soundDisplayFreq").innerText = "Sound Frequency: " + soundFreq + " Hz";
+          document.getElementById("soundDisplayVol").innerText = "Sound Amplitude: " + soundVol;
+        })
+        .catch((error) => {
+          console.error("Failed to get Sound:", error);
+        });
+      mjsonrpc_db_get_values(["Equipment/FridgeSensor/Variables/XVibration"])
+        .then((response) => {
+          const xVib = response.result.data[0];
+          const xVibFreq=xVib[0]
+          const xVibVol=xVib[1]
+          document.getElementById("displayxVibFreq").innerText = "X Vibration Frequency: " + xVibFreq + " Hz";
+          document.getElementById("displayxVibVol").innerText = "X Vibration Amplitude: " + xVibVol;
+        })
+        .catch((error) => {
+          console.error("Failed to get X Vibration:", error);
+        });
+      mjsonrpc_db_get_values(["Equipment/FridgeSensor/Variables/YVibration"])
+        .then((response) => {
+          const yVib = response.result.data[0];
+          const yVibFreq=yVib[0]
+          const yVibVol=yVib[1]
+          document.getElementById("displayyVibFreq").innerText = "Y Vibration Frequency: " + yVibFreq + " Hz";
+          document.getElementById("displayyVibVol").innerText = "Y Vibration Amplitude: " + yVibVol;
+        })
+        .catch((error) => {
+          console.error("Failed to get Y Vibration:", error);
+        });
+      mjsonrpc_db_get_values(["Equipment/FridgeSensor/Variables/ZVibration"])
+        .then((response) => {
+          const zVib = response.result.data[0];
+          const zVibFreq=zVib[0]
+          const zVibVol=zVib[1]
+          document.getElementById("displayzVibFreq").innerText = "Z Vibration Frequency: " + zVibFreq + " Hz";
+          document.getElementById("displayzVibVol").innerText = "Z Vibration Amplitude: " + zVibVol;
+        })
+        .catch((error) => {
+          console.error("Failed to get Z Vibration:", error);
+        });
+    }
+    
+    function ScopeCount() {
+      scopeCounter=scopeCounter+1;
+      if (scopeCounter % 10 == 0){
+        document.getElementById("ScopeTimerText").innerText="Time Since Last Update: " + scopeCounter/10+".0";
+      }
+      else{
+        document.getElementById("ScopeTimerText").innerText="Time Since Last Update: " + scopeCounter/10;
+      }
+    }
+    function ParamCount() {
+      paramCounter=paramCounter+1;
+      if (paramCounter % 10 == 0){
+        document.getElementById("ParamTimerText").innerText="Time Since Last Probe: " + paramCounter/10+".0";
+      }
+      else{
+        document.getElementById("ParamTimerText").innerText="Time Since Last Probe: " + paramCounter/10;
+      }
+    }
+
+    function GetValuesScopePage() {
+      scopeCounter=0;
+      mjsonrpc_db_get_values(["Equipment/Oscilloscope/Variables/FunctionGenerator"])
+        .then((response) => {
+          const _status = response.result.data[0];
+          if (_status == 0) {
+            document.getElementById("OnOffText").innerText="Function Generator Status: Off";
+          }
+          else if (_status == 1){
+            document.getElementById("OnOffText").innerText="Function Generator Status: On";
+          }
+          else{
+            document.getElementById("OnOffText").innerText="The status of the Function Generator appears to be neither on nor off";
+          }        
+        })
+        .catch((error) => {
+          console.error("Failed to get Status of Function Generator:", error);  
+        });
+
+      mjsonrpc_db_get_values(["Equipment/Oscilloscope/Variables/Frequency"])
+        .then((response) => {
+          const _frequency = response.result.data[0];
+          document.getElementById("freqText").innerText="Function Generator Frequency: " + _frequency;
+        })
+        .catch((error) => {
+          console.error("Failed to get frequency:", error);  
+        });  
+    
+      mjsonrpc_db_get_values(["Equipment/Oscilloscope/Variables/Voltage"])
+        .then((response) => {
+          const _voltage = response.result.data[0];
+          document.getElementById("voltText").innerText="Function Generator Voltage: " + _voltage;
+        })
+        .catch((error) => {
+          console.error("Failed to get voltage:", error);
+        });
+
+      mjsonrpc_db_get_values(["Equipment/Oscilloscope/Variables/Channel"])
+        .then((response) => {
+          const _channel= response.result.data[0];
+          document.getElementById("channelText").innerText="Which Oscilloscope Channel: " + _channel;
+        })
+        .catch((error) => {
+          console.error("Failed to get channel:", error);
+        });
+
+      mjsonrpc_db_get_values(["Equipment/Oscilloscope/Variables/Gain"])
+        .then((response) => {
+          const _gain = response.result.data[0];
+          document.getElementById("gainText").innerText="Function Generator Gain: " + _gain;
+        })
+        .catch((error) => {
+          console.error("Failed to get gain:", error);
+        });
+
+      mjsonrpc_db_get_values(["Equipment/Oscilloscope/Variables/Shape"])
+        .then((response) => {
+          const _shape = response.result.data[0];
+          document.getElementById("shapeText").innerText="Function Generator Shape: " + _shape;
+        })
+        .catch((error) => {
+          console.error("Failed to get shape:", error);
+        });
+
+
+
+    }
+
+  </script>
+
+</body>
+</html>
