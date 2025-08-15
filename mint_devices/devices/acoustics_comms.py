@@ -12,7 +12,7 @@ from perseus.client import ModuleClient
 from RTM3004 import RTM3004
 
 
-class acoustics:
+class Acoustics:
     """A class to record data on the mainboard over perseus with the audio TLV320ADC6140"""
 
     ###############################################################################
@@ -35,7 +35,6 @@ class acoustics:
         # Configure from midas sequencer in kwargs
         # Mainboard IP "11.102.1.1"
         self.debug = kwargs["debug"]
-        self.mainboard_ip = kwargs["mainboard_ip"]
         self.output_dir = kwargs["output_dir"]
         self.tag = kwargs["tag"]
         self.output_dir = os.path.join(self.output_dir, self.tag)
@@ -50,8 +49,14 @@ class acoustics:
 
         # osci_address "11.102.0.106"
         self.rtm = RTM3004(device=kwargs["osci_address"])
-        self.module = ModuleClient(self.mainboard_ip)
+        self.module = ModuleClient(kwargs["mainboard_ip"])
         self.seq = kwargs["seq"]
+
+        self.acoustic_out = None
+        self.acoustic_err = None
+
+    def __del__(self):
+        self.close_collection_port()
 
     def set_record_time(self, time):
         self.t_record = time
@@ -292,3 +297,33 @@ class acoustics:
 
         self.osci_off()
         # self.wait_for_raspi()
+
+    def open_collection_port(
+        self,
+        port,
+        output_filename="./output/acoustic_out.bin",
+        err_filename="./output/acoustic_err.txt",
+    ):
+        """
+        Opens a netcat port to receive binary data from the acoustic stream off
+        of a mainboard.
+
+        Will return immediately and allow the process to run on a new thread.
+        """
+
+        self.acoustic_out = open(output_filename, "wb")
+        self.acoustic_err = open(err_filename, "w")
+        self.listen_proc = subprocess.Popen(
+            f"nc -l {port}", stdout=self.acoustic_out, stderr=self.acoustic_err
+        )
+
+    def close_collection_port(self):
+        """
+        Closes collection port and open files.
+        """
+        if self.listen_proc.poll() is None:
+            self.listen_proc.kill()
+        if self.acoustic_out is not None and not self.acoustic_out.closed:
+            self.acoustic_out.close()
+        if self.acoustic_err is not None and not self.acoustic_err.closed:
+            self.acoustic_err.close()
