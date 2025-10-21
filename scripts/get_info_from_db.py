@@ -14,7 +14,32 @@ def get_data(database='tum',
              mongo_username = '',
              mongo_password = '',
              ) -> AttrsDict:
+    """queries production database 
 
+            Parameters
+            ----------
+            database : str
+                Database to query
+            collection : str
+                Collection to query
+            query : dict
+                MongoDB query
+            ssh_host : str
+                Address of remote server.
+            ssh_port : int
+                Port of remote server
+            remote_bind_address : tuple
+                Tuple of mongoDB binds on local machine (address , port)
+            mongo_username : str
+                username of the mongoDB
+            mongo_password : str
+                password of the mongoDB
+
+            Returns
+            -------
+            AttrsDict
+                Attributized dict with entries matching the query result {mongoid:db_entry}
+            """
     result = {}
     # Start SSH tunnel
     with SSHTunnelForwarder(
@@ -50,7 +75,7 @@ if __name__ == "__main__":
     db_devices =get_data(query={'uid':{"$regex": 'p-1-1-*'} })
     db_measurements = get_data(collection='Measurements_Pmt', query={'measurement_location':'TUM', 'measurement_type': 'Nominal voltage'})
 
-    pmts = db_devices.map('uid',unique=False)[hemisphere][0].subdevices.map('device_type',unique=False)['pmt-unit'].map('uid')
+    pmts = db_devices.map('uid')[hemisphere].subdevices.map('device_type',unique=False)['pmt-unit'].map('uid')
     settings = AttrsDict()
     for k in pmts.keys():
         val = db_measurements.group('devices_used.uid')[k][0].result
