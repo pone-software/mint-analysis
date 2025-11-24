@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from lgdo.types import ArrayOfEqualSizedArrays, WaveformTable
 
-from mintanalysis.dsp.template_wf import build_template_waveform
+from mintanalysis.pmt.dsp.template_wf import build_template_waveform
 
 
 def test_build_template_waveform():
