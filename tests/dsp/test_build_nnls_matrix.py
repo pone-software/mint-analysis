@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from lgdo.types import ArrayOfEqualSizedArrays, WaveformTable
 
-from mintanalysis.dsp.build_nnls_matrix import build_nnls_matrix
+from mintanalysis.pmt.dsp.build_nnls_matrix import build_nnls_matrix
 
 
 def test_build_nnls_matrix_valid_input():
