@@ -31,7 +31,7 @@ lint.unfixable = [
   "T20",  # Removes print statements
   "F841", # Removes unused variables
 ]
-lint.ignore = ["PLR0913"]
+lint.ignore = ["PLR0913","PLR2004","PLR0912","PLR0915"]
 lint.flake8-unused-arguments.ignore-variadic-names = true
 # Allow lines to be as long as 120.
 line-length = 99
