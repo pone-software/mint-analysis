@@ -117,8 +117,8 @@ if __name__ == "__main__":
             dcts = np.sum(y_fit[:valley_idx]) + np.sum(n[valley_idx:])
 
             # TODO timestamps in rawfile are currently broken (they are sample numbers currently)
-            ts = lh5.read_as(f"{ch}/raw/timestamp",f_raw,"np")
-            dt = (ts.max() -ts.min())*4.8e-9
+            ts = lh5.read_as(f"{ch}/raw/timestamp", f_raw, "np")
+            dt = (ts.max() - ts.min()) * 4.8e-9
 
             result_dic[ch]["dcr"] = {"dcr": {"dcr": dcts / dt, "counts": dcts, "runtime_s": dt}}
 
