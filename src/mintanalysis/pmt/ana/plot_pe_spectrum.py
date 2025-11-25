@@ -51,6 +51,7 @@ def gaussian(x, amp, mu, sigma):
 if __name__ == "__main__":
 
     f_raw = "/home/pkrause/noise_hunt/data/p-1-1-om-hs-31/ref-v0.0.0/generated/tier/raw/r020/r020_2025_10_22_23_43_47.lh5"
+    # f_raw = "/home/pkrause/noise_hunt/data/p-1-1-om-hs-31/ref-v0.0.0/generated/tier/raw/r018/r018_2025_09_26_18_44_17.lh5"
     f_dsp = f_raw.replace("raw", "dsp")
 
     bin_size = 20
@@ -115,9 +116,9 @@ if __name__ == "__main__":
 
             dcts = np.sum(y_fit[:valley_idx]) + np.sum(n[valley_idx:])
 
-            # timestamps in rawfile are currently broken
-            # ts = lh5.read_as(f"{ch}/raw/timestamp",f_raw,"np")
-            dt = 25.021  # from log file
+            # TODO timestamps in rawfile are currently broken (they are sample numbers currently)
+            ts = lh5.read_as(f"{ch}/raw/timestamp",f_raw,"np")
+            dt = (ts.max() -ts.min())*4.8e-9
 
             result_dic[ch]["dcr"] = {"dcr": {"dcr": dcts / dt, "counts": dcts, "runtime_s": dt}}
 
