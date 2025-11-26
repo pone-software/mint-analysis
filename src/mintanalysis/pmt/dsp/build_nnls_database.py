@@ -77,7 +77,7 @@ def create_nnls_database(
         Optional: Pass additional folding method
 
     """
-    data = lh5.read_as("ch000/raw", f_raw, "ak")
+    data = lh5.read_as(f"{lh5.ls(f_raw)[0]}/raw", f_raw, "ak")
     x = np.arange(0, len(data.waveform.values[0]) * daq_sampling, daq_sampling / upsampling_factor)
     A = np.zeros((len(data.waveform.values[0]), len(x)))
     for i in range(len(x)):
