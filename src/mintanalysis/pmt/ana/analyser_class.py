@@ -1,0 +1,725 @@
+"""
+PESpectrumAnalyzer
+
+- Logging to stdout + file.
+- Missing critical files -> hard fail.
+- Per-channel fit/peak failures -> skip and continue.
+- One PDF per run (written once; pages appended in-memory during run processing).
+- Cleaner decomposition and minimal repetition.
+- 1st p.e. fit: single gauss
+- DCR estimate and plot
+- linear gain fit
+- SNR plot
+
+Usage: Run via CLI with desired flags
+"""
+
+from __future__ import annotations
+
+import argparse
+import logging
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+import awkward as ak
+import matplotlib.pyplot as plt
+import numpy as np
+import yaml
+from iminuit import Minuit
+from lgdo import lh5
+from matplotlib.backends.backend_pdf import PdfPages
+from scipy.optimize import curve_fit
+
+# --------------------------
+# Configuration / Constants
+# --------------------------
+AUX_YAML = Path(
+    "/home/pkrause/noise_hunt/data/p-1-1-om-hs-31/ref-v0.0.0/generated/tier/aux/r020/p-1-1-om-hs-31.yaml"
+)
+RAW_DIR = Path("/home/pkrause/noise_hunt/data/p-1-1-om-hs-31/ref-v0.0.0/generated/tier/raw/r020")
+RESULT_YAML = Path("/home/pkrause/software/mint-analysis/debug_out/results.yaml")
+PLOT_FOLDER = Path("/home/pkrause/software/mint-analysis/debug_out/pe_spectra/")
+LOG_FILE = Path("/home/pkrause/software/mint-analysis/debug_out/pe_spectrum.log")
+
+# Analysis constants
+BIN_SIZE = 20
+BINS = np.arange(-100, 10000, BIN_SIZE)
+LIM = 20
+A4_LANDSCAPE = (11.69, 8.27)
+OVERRIDE_RESULTS = True
+
+
+# --------------------------
+# Logging Setup
+# --------------------------
+
+
+def setup_logging(log_file: Path = LOG_FILE, level: int = logging.INFO) -> logging.Logger:
+    logger = logging.getLogger("PESpectrum")
+    logger.setLevel(level)
+    logger.propagate = False
+
+    if not logger.handlers:
+        fmt = logging.Formatter(
+            "[%(asctime)s] [%(name)s - %(funcName)s] [%(levelname)s] %(message)s"
+        )
+
+        sh = logging.StreamHandler()
+        sh.setLevel(level)
+        sh.setFormatter(fmt)
+        logger.addHandler(sh)
+
+        fh = logging.FileHandler(log_file, mode="w")
+        fh.setLevel(level)
+        fh.setFormatter(fmt)
+        logger.addHandler(fh)
+
+    return logger
+
+
+# --------------------------
+# Small helpers
+# --------------------------
+
+
+@dataclass
+class ChannelResult:
+    status: str  # 'ok', 'skipped', 'error'
+    data: dict[str, Any]
+
+
+def linear_func(x, a, b):
+    return a * x + b
+
+
+def gaussian(x: np.ndarray, amp: float, mu: float, sigma: float) -> np.ndarray:
+    return amp * np.exp(-0.5 * ((x - mu) / sigma) ** 2)
+
+
+def poisson_nll(amp: float, mu: float, sigma: float, x: np.ndarray, y: np.ndarray) -> float:
+    expected = gaussian(x, amp, mu, sigma)
+    expected = np.clip(expected, 1e-10, None)
+    return float(np.sum(expected - y * np.log(expected)))
+
+
+def valley_index_strict(y: np.ndarray) -> tuple[int, int] | None:
+    """Return (peak_idx, valley_idx) or None."""
+    n = len(y)
+    if n < 3:
+        return None
+
+    peak = None
+    for i in range(1, n - 1):
+        if y[i] > y[i - 1] and y[i] > y[i + 1]:
+            peak = i
+            break
+    if peak is None:
+        return None
+
+    valley = peak
+    i = peak + 1
+    while i < n:
+        if y[i] > y[i - 1]:
+            return peak, valley
+        if y[i] < y[valley]:
+            valley = i
+        i += 1
+
+    return None
+
+
+# --------------------------
+# Analyzer class
+# --------------------------
+class PESpectrumAnalyzer:
+    def __init__(
+        self,
+        aux_yaml: Path = AUX_YAML,
+        raw_dir: Path = RAW_DIR,
+        plot_folder: Path = PLOT_FOLDER,
+        result_yaml: Path = RESULT_YAML,
+        bins: np.ndarray = BINS,
+        bin_size: int = BIN_SIZE,
+        lim: int = LIM,
+        override_results: bool = OVERRIDE_RESULTS,
+        logger: logging.Logger | None = None,
+    ) -> None:
+        self.aux_yaml = aux_yaml
+        self.raw_dir = raw_dir
+        self.plot_folder = plot_folder
+        self.result_yaml = result_yaml
+        self.bins = bins
+        self.bin_size = bin_size
+        self.lim = lim
+        self.override_results = override_results
+        self.logger = logger or setup_logging()
+        self.aux = self._load_aux()
+        self.plot_folder.mkdir(parents=True, exist_ok=True)
+
+    # ----------------------
+    # I/O helpers
+    # ----------------------
+    def _load_aux(self) -> dict[str, Any]:
+        if not self.aux_yaml.exists():
+            msg = f"Aux file not found: {self.aux_yaml}"
+            raise FileNotFoundError(msg)
+        with open(self.aux_yaml) as f:
+            aux = yaml.safe_load(f)
+        self.logger.info("Loaded aux YAML: %s", self.aux_yaml)
+        return aux
+
+    # ----------------------
+    # Public entrypoints
+    # ----------------------
+    def run(self) -> None:
+        results: dict[str, dict[int, dict[str, Any]]] = {}
+        for run_name, meta in self.aux.items():
+            self.logger.info("Starting run: %s", run_name)
+            try:
+                results[run_name] = self.analyze_run(run_name, meta)
+            except FileNotFoundError as e:
+                self.logger.exception("Critical file missing for run %s: %s", run_name, e)
+                raise
+        self._save_results(results)
+        self.logger.info("All runs processed.")
+
+    # ----------------------
+    # Per-run flow
+    # ----------------------
+    def analyze_run(self, run_name: str, meta: dict[str, Any]) -> dict[int, dict[str, Any]]:
+        # build file paths
+        fname = meta["daq"].split("/")[-1].replace("daq", "r020").replace("data", "lh5")
+        f_raw = self.raw_dir / fname
+        if not f_raw.exists():
+            msg = f"Raw file for run {run_name} not found: {f_raw}"
+            raise FileNotFoundError(msg)
+        f_dsp = Path(str(f_raw).replace("raw", "dsp"))
+        if not f_dsp.exists():
+            msg = f"DSP file for run {run_name} not found: {f_dsp}"
+            raise FileNotFoundError(msg)
+
+        run_results: dict[int, dict[str, Any]] = {}
+        pdf_path = self.plot_folder / f"pe_spectra_{run_name}.pdf"
+
+        # collect figures and write once
+        with PdfPages(pdf_path) as pdf:
+            for ch in lh5.ls(f_dsp):
+                pmt = int(ch[2:]) + 1
+                self.logger.info("Run %s - channel %s (PMT %d)", run_name, ch, pmt)
+                try:
+                    fig, chan_data = self.process_channel(run_name, ch, pmt, meta, f_raw, f_dsp)
+                    # fig may be None if plotting skipped
+                    if fig is not None:
+                        pdf.savefig(fig)
+                        plt.close(fig)
+                    run_results[pmt] = chan_data
+                except Exception as exc:
+                    self.logger.exception(
+                        "Channel-level error run=%s ch=%s: %s", run_name, ch, exc
+                    )
+                    run_results[pmt] = {"status": "error", "reason": str(exc)}
+
+        self.logger.info("Wrote PDF for run %s to %s", run_name, pdf_path)
+        return run_results
+
+    # ----------------------
+    # Per-channel processing
+    # ----------------------
+    def process_channel(
+        self,
+        run_name: str,
+        ch: str,
+        pmt: int,
+        meta: dict[str, Any],
+        f_raw: Path,
+        f_dsp: Path,
+    ) -> tuple[plt.Figure | None, dict[str, Any]]:
+        """Process channel. Returns (figure_or_None, channel_result_dict).
+
+        Non-critical failures return a result dict with status 'skipped'
+        """
+        result: dict[str, Any] = {}
+        ch_idx = int(ch[2:])
+        voltage = float(meta["voltages_in_V"][ch_idx])
+        result["voltage"] = {"val": voltage, "unit": "V"}
+
+        # load data
+        try:
+            d = lh5.read_as(f"{ch}/dsp", f_dsp, "ak")
+        except Exception as e:
+            msg = f"Failed to read DSP for {ch} in {f_dsp}: {e}"
+            self.logger.warning(msg)
+            return None, {"status": "skipped", "reason": msg}
+
+        # compute pe-values
+        try:
+            vals = ak.to_numpy(d.nnls_solution.values, allow_missing=False)
+            pe_vals = np.nansum(np.where(vals > self.lim, vals, np.nan), axis=1)
+        except Exception as e:
+            msg = f"Failed to compute pe values for {ch}: {e}"
+            self.logger.warning(msg)
+            return None, {"status": "skipped", "reason": msg}
+
+        # histogram
+        fig, ax = plt.subplots(figsize=A4_LANDSCAPE)
+        n, bins, _ = ax.hist(
+            pe_vals,
+            bins=self.bins,
+            histtype="step",
+            label=f"channel {ch} (PMT {pmt}) at {voltage:.2f} V",
+        )
+
+        bin_centers = 0.5 * (bins[1:] + bins[:-1])
+
+        # noise-only
+        if voltage == 0:
+            self._decorate_axis(ax)
+            # minimal result (no fit)
+            result.update(
+                {"status": "ok", "statistics": {}, "pe_peak_fit": {}, "runtime": {"unit": "s"}}
+            )
+            if "runtime_in_s" in meta:
+                result["runtime"]["aux"] = meta["runtime_in_s"]
+            raw_runtime = self._extract_runtime_if_present(f_raw, ch)
+            if raw_runtime is not None:
+                result["runtime"]["raw"] = raw_runtime
+            return fig, result
+
+        # detect valley & peaks
+        vi = valley_index_strict(n)
+        if vi is None:
+            msg = "Valley detection failed (no strict peak/valley)."
+            self.logger.warning("Run %s ch %s: %s", run_name, ch, msg)
+            self._decorate_axis(ax)
+            return fig, {"status": "skipped", "reason": msg}
+
+        noise_peak, valley_idx = vi
+
+        # find first p.e. peak after noise_peak
+        sub = n[noise_peak:]
+        pe_vi = valley_index_strict(sub)
+        if pe_vi is None:
+            msg = "1st-p.e. detection failed after noise peak."
+            self.logger.warning("Run %s ch %s: %s", run_name, ch, msg)
+            self._decorate_axis(ax)
+            return fig, {"status": "skipped", "reason": msg}
+
+        pe_peak_rel, _ = pe_vi
+        pe_peak_idx = noise_peak + pe_peak_rel
+
+        # annotate choices
+        ax.axvline(bin_centers[valley_idx], color="red", ls="--", label="valley")
+        ax.axvline(bin_centers[pe_peak_idx], color="green", ls="--", label="1st pe guess")
+
+        # fit window
+        x_min = bin_centers[valley_idx]
+        x_max = 2 * bin_centers[pe_peak_idx]
+        mask = (bin_centers >= x_min) & (bin_centers <= x_max)
+        bin_centers_fit = bin_centers[mask]
+        n_fit = n[mask]
+
+        if len(bin_centers_fit) < 3:
+            msg = f"Insufficient bins for fitting (n_fit={len(bin_centers_fit)})."
+            self.logger.warning("Run %s ch %s: %s", run_name, ch, msg)
+            self._decorate_axis(ax)
+            return fig, {"status": "skipped", "reason": msg}
+
+        amp0 = float(n[pe_peak_idx])
+        mu0 = float(bin_centers[pe_peak_idx])
+        sigma0 = 100.0
+
+        try:
+            m = Minuit(
+                lambda amp, mu, sigma: poisson_nll(amp, mu, sigma, bin_centers_fit, n_fit),
+                amp=amp0,
+                mu=mu0,
+                sigma=sigma0,
+            )
+            m.errordef = Minuit.LIKELIHOOD
+            m.migrad(iterate=10)
+        except Exception as e:
+            msg = f"Minuit error for {ch}: {e}"
+            self.logger.warning("Run %s ch %s: %s", run_name, ch, msg)
+            self._decorate_axis(ax)
+            return fig, {"status": "skipped", "reason": msg}
+
+        # Basic validity check
+        if not getattr(m, "valid", True):
+            self.logger.warning("Minuit invalid result for run %s ch %s", run_name, ch)
+            self._decorate_axis(ax)
+            return fig, {"status": "skipped", "reason": "Minuit invalid"}
+
+        fit_vals = {k: float(v) for k, v in m.values.to_dict().items()}
+        fit_errs = {k: float(v) for k, v in m.errors.to_dict().items()}
+
+        result["pe_peak_fit"] = {
+            "mean": {"val": fit_vals["mu"], "err": fit_errs["mu"], "unit": "NNLS"},
+            "sigma": {"val": fit_vals["sigma"], "err": fit_errs["sigma"], "unit": "NNLS"},
+            "amp": {"val": fit_vals["amp"], "err": fit_errs["amp"], "unit": ""},
+        }
+
+        # full fit curve over bins for plotting & integrals
+        y_fit = gaussian(bin_centers, fit_vals["amp"], fit_vals["mu"], fit_vals["sigma"])
+        ax.plot(bin_centers, y_fit, "r-", label="NLL fit (Minuit)")
+
+        self._decorate_axis(ax)
+
+        # statistics
+        try:
+            result["statistics"] = {
+                "1st_pe_fit_integral_below_valley": {
+                    "val": float(np.sum(y_fit[:valley_idx])),
+                    "unit": "",
+                },
+                "cts_above_valley": {"val": int(np.sum(n[:valley_idx])), "unit": ""},
+                "cts_below_valley": {"val": int(np.sum(n[valley_idx:])), "unit": ""},
+                "1st_pe_fit_integral": {"val": int(float(np.sum(y_fit))), "unit": ""},
+                "total_cts": {"val": int(np.sum(n)), "unit": ""},
+                "valley": {
+                    "pos": {"val": float(bin_centers[valley_idx]), "unit": "NNLS"},
+                    "amp": {"val": int(n[valley_idx]), "unit": ""},
+                },
+                "1st_pe_guess": {
+                    "pos": {"val": float(mu0), "unit": "NNLS"},
+                    "amp": {"val": int(amp0), "unit": ""},
+                },
+            }
+        except Exception as e:
+            self.logger.warning(
+                "Statistics computation failed for run %s ch %s: %s", run_name, ch, e
+            )
+            result.setdefault("statistics", {})
+            result["statistics"]["error"] = str(e)
+
+        # runtime
+        result["runtime"] = {"unit": "s"}
+        if "runtime_in_s" in meta:
+            result["runtime"]["aux"] = meta["runtime_in_s"]
+        raw_runtime = self._extract_runtime_if_present(f_raw, ch)
+        if raw_runtime is not None:
+            result["runtime"]["raw"] = raw_runtime
+
+        result["status"] = "ok"
+        return fig, result
+
+    # ----------------------
+    # Utilities
+    # ----------------------
+    def _decorate_axis(self, ax: plt.Axes) -> None:
+        ax.set_xlim(-10, 2.5e3)
+        ax.set_ylim(0.5, None)
+        ax.set_yscale("log")
+        ax.set_ylabel(f"Counts/{self.bin_size} NNLS units")
+        ax.set_xlabel("NNLS units")
+        ax.set_title(f"pygama-NNLS reconstruction ({self.lim} units solution cut-off)")
+        ax.legend()
+
+    def _extract_runtime_if_present(self, f_raw: Path, ch: str) -> float | None:
+        try:
+            entries = set(lh5.ls(f_raw, f"{ch}/raw/"))
+        except Exception:
+            entries = set()
+
+        sec_key = f"{ch}/raw/timestamp_sec"
+        ps_key = f"{ch}/raw/timestamp_ps"
+        if sec_key in entries and ps_key in entries:
+            try:
+                ts = lh5.read_as(sec_key, f_raw, "np")
+                ts_ps = lh5.read_as(ps_key, f_raw, "np")
+                idx_max = int(ts.argmax())
+                idx_min = int(ts.argmin())
+                return float(
+                    ts[idx_max] + ts_ps[idx_max] * 1e-12 - (ts[idx_min] + ts_ps[idx_min] * 1e-12)
+                )
+            except Exception:
+                self.logger.debug("Failed to extract new-style timestamps for %s in %s", ch, f_raw)
+
+        legacy_key = f"{ch}/raw/timestamp"
+        if legacy_key in entries:
+            try:
+                t = lh5.read_as(legacy_key, f_raw, "np")
+                return float((t.max() - t.min()) * 4.8e-9)
+            except Exception:
+                self.logger.debug("Failed to extract legacy timestamps for %s in %s", ch, f_raw)
+
+        return None
+
+    def _save_results(self, results: dict[str, dict[int, dict[str, Any]]]) -> None:
+        if self.result_yaml.exists():
+            with open(self.result_yaml) as f:
+                existing = yaml.safe_load(f) or {}
+            if "pe_spectrum" in existing and not self.override_results:
+                msg = "Results already present and override flag is False."
+                raise RuntimeError(msg)
+            existing["pe_spectrum"] = results
+            with open(self.result_yaml, "w") as f:
+                yaml.safe_dump(existing, f, default_flow_style=False)
+            self.logger.info("Updated result YAML at %s", self.result_yaml)
+        else:
+            with open(self.result_yaml, "w") as f:
+                yaml.safe_dump({"pe_spectrum": results}, f, default_flow_style=False)
+            self.logger.info("Wrote new result YAML at %s", self.result_yaml)
+
+    # ----------------------
+    # Signal to Noise Ratio (SNR)
+    # ----------------------
+    def plot_snr(self) -> None:
+        if not self.result_yaml.exists():
+            msg = f"Result YAML not found: {self.result_yaml}"
+            raise FileNotFoundError(msg)
+        with open(self.result_yaml) as f:
+            data = yaml.safe_load(f) or {}
+        if "pe_spectrum" not in data:
+            msg = "pe_spectrum info not present in result YAML; run analysis first."
+            raise RuntimeError(msg)
+
+        snr = {}
+        for run_name, pmt_dict in data["pe_spectrum"].items():
+            run_snr = {}
+            for pmt, info in pmt_dict.items():
+                try:
+                    if info.get("voltage", {}).get("val", 0) == 0:
+                        continue
+                    noise = {
+                        "val": info.get("statistics", {})
+                        .get("valley", {})
+                        .get("amp", {})
+                        .get("val", 0.0)
+                    }
+                    noise["err"] = noise["val"] ** 0.5
+                    if info.get("status", "skipped") == "ok":
+                        signal = {
+                            "val": info.get("pe_peak_fit").get("amp", {}).get("val", 0.0),
+                            "err": info.get("pe_peak_fit").get("amp", {}).get("err", 0.0),
+                        }
+                    else:
+                        signal = {
+                            "val": info.get("statistics", {})
+                            .get("1st_pe_guess", {})
+                            .get("amp", {})
+                            .get("val", 0)
+                        }
+                        signal["err"] = signal["val"] ** 0.5
+                    run_snr[pmt] = {
+                        "val": 1 - noise["val"] / signal["val"],
+                        "err": (
+                            noise["err"] ** 2 / signal["val"] ** 2
+                            + (noise["val"] ** 2 * signal["err"] ** 2) / signal["val"] ** 4
+                        ),
+                        "unit": "",
+                    }
+                except Exception as e:
+                    self.logger.warning(
+                        "Failed to compute SNR for run %s PMT %s: %s", run_name, pmt, e
+                    )
+            snr[run_name] = run_snr
+
+        fig, ax = plt.subplots(figsize=A4_LANDSCAPE)
+        for run_name, pmt_dict in snr.items():
+            pmts = sorted(pmt_dict.keys())
+            vals = [pmt_dict[p]["val"] for p in pmts]
+            ax.plot(pmts, vals, marker="o", label=run_name)
+        ax.set_xlabel("PMT")
+        ax.set_ylabel("SNR (a.u.)")
+        ax.set_title("SNR per PMT (= 1 - valley/peak)")
+        ax.legend()
+        plt.tight_layout()
+        plot_path = self.plot_folder / "snr_plot.png"
+        fig.savefig(plot_path)
+        plt.close(fig)
+        self.logger.info("SNR plot saved to %s", plot_path)
+
+    # ----------------------
+    # Dark Count Rate (DCR)
+    # ----------------------
+    def compute_dark_count_rate(self, time_mode: str = "aux") -> None:
+        if not self.result_yaml.exists():
+            msg = f"Result YAML not found: {self.result_yaml}"
+            raise FileNotFoundError(msg)
+        with open(self.result_yaml) as f:
+            data = yaml.safe_load(f) or {}
+        if "pe_spectrum" not in data:
+            msg = "pe_spectrum info not present in result YAML; run analysis first."
+            raise RuntimeError(msg)
+        if "dcr" in data and not self.override_results:
+            msg = "DCR already exists and override flag is False."
+            raise RuntimeError(msg)
+        dcr = {}
+        for run_name, pmt_dict in data["pe_spectrum"].items():
+            run_dcr = {}
+            for pmt, info in pmt_dict.items():
+                try:
+                    if info.get("voltage", {}).get("val", 0) == 0:
+                        continue
+                    stats = info.get("statistics", {})
+                    runtime_info = info.get("runtime", {})
+                    if time_mode not in runtime_info:
+                        self.logger.warning(
+                            "Run %s PMT %s: missing runtime '%s'; skipping DCR.",
+                            run_name,
+                            pmt,
+                            time_mode,
+                        )
+                        continue
+                    dcts = stats.get("1st_pe_fit_integral_below_valley", {}).get(
+                        "val", 0.0
+                    ) + stats.get("cts_above_valley", {}).get("val", 0)
+                    runtime = runtime_info[time_mode]
+                    run_dcr[pmt] = {
+                        "val": float(dcts) / float(runtime),
+                        "err": float(dcts**0.5) / float(runtime),
+                        "unit": "Hz",
+                    }
+                except Exception as e:
+                    self.logger.warning(
+                        "Failed to compute DCR for run %s PMT %s: %s", run_name, pmt, e
+                    )
+            dcr[run_name] = run_dcr
+        data["dcr"] = dcr
+        with open(self.result_yaml, "w") as f:
+            yaml.safe_dump(data, f, default_flow_style=False)
+        self.logger.info("Wrote DCR results to %s", self.result_yaml)
+
+        fig, ax = plt.subplots(figsize=A4_LANDSCAPE)
+        for run_name, pmt_dict in dcr.items():
+            pmts = sorted(pmt_dict.keys())
+            vals = [pmt_dict[p]["val"] for p in pmts]
+            ax.plot(pmts, vals, marker="o", label=run_name)
+        ax.set_xlabel("PMT")
+        ax.set_ylabel("DCR (Hz)")
+        ax.set_title("Dark Count Rate per PMT")
+        ax.legend()
+        plt.tight_layout()
+        plot_path = self.plot_folder / "dcr_plot.png"
+        fig.savefig(plot_path)
+        plt.close(fig)
+        self.logger.info("DCR plot saved to %s", plot_path)
+
+    # ----------------------
+    # Linear Gain Fit computation
+    # ----------------------
+    def compute_linear_gain_fit(self) -> None:
+        if not self.result_yaml.exists():
+            msg = f"Result YAML not found: {self.result_yaml}"
+            raise FileNotFoundError(msg)
+        with open(self.result_yaml) as f:
+            data = yaml.safe_load(f) or {}
+        if "pe_spectrum" not in data:
+            msg = "pe_spectrum info not present in result YAML; run analysis first."
+            raise RuntimeError(msg)
+
+        tmp_dic = {"used_keys": []}
+        y_unit = None
+        x_unit = None
+        for key, run in data["pe_spectrum"].items():
+            tmp_dic["used_keys"].append(key)
+            for pmt in run:
+                if pmt not in tmp_dic:
+                    tmp_dic[pmt] = {"voltage": [], "vals": [], "errs": []}
+                v = run[pmt]["voltage"]["val"]
+                xu = run[pmt]["voltage"]["unit"]
+                if x_unit is None:
+                    x_unit = xu
+                else:
+                    assert x_unit == xu
+                if v == 0:
+                    continue
+                tmp_dic[pmt]["voltage"].append(v)
+                tmp_dic[pmt]["vals"].append(run[pmt]["pe_peak_fit"]["mean"]["val"])
+                tmp_dic[pmt]["errs"].append(run[pmt]["pe_peak_fit"]["mean"]["err"])
+                yu = run[pmt]["pe_peak_fit"]["mean"]["unit"]
+                if y_unit is None:
+                    y_unit = yu
+                else:
+                    assert y_unit == yu
+
+        pdf_path = self.plot_folder / "gain_plots.pdf"
+        with PdfPages(pdf_path) as pdf:
+            for key, pmt in tmp_dic.items():
+                if key == "used_keys":
+                    continue
+                fig, ax = plt.subplots(figsize=A4_LANDSCAPE)
+                ax.errorbar(pmt["voltage"], pmt["vals"], pmt["errs"], fmt="o", label=f"PMT {key}")
+                ax.set_xlabel(f"Voltage ({x_unit})")
+                ax.set_ylabel(f"PMT position ({y_unit})")
+                params, covariance = curve_fit(
+                    linear_func,
+                    pmt["voltage"],
+                    pmt["vals"],
+                    sigma=pmt["errs"],
+                    absolute_sigma=True,
+                )
+                a_opt, b_opt = params
+                perr = np.sqrt(np.diag(covariance))
+                x = np.linspace(-1 * b_opt / a_opt, max(pmt["voltage"]) + 10, 1000)
+                ax.plot(x, linear_func(x, a_opt, b_opt), ls="--", color="red", label="Fit")
+                tmp_dic[key]["a"] = {
+                    "val": float(a_opt),
+                    "err": float(perr[0]),
+                    "unit": f"{y_unit}/{x_unit}",
+                }
+                tmp_dic[key]["b"] = {
+                    "val": float(b_opt),
+                    "err": float(perr[1]),
+                    "unit": f"{y_unit}/{x_unit}",
+                }
+                tmp_dic[key]["func"] = "G = a*voltage+b"
+                pmt.pop("voltage")
+                pmt.pop("vals")
+                pmt.pop("errs")
+                ax.legend()
+                pdf.savefig(fig)
+                plt.close(fig)
+        data["linear_gain"] = tmp_dic
+        with open(self.result_yaml, "w") as f:
+            yaml.safe_dump(data, f, default_flow_style=False)
+        self.logger.info("Linear gain fit results saved to %s", self.result_yaml)
+
+
+# --------------------------
+# CLI entrypoint
+# --------------------------
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="PE Spectrum Analyzer with DCR and linear gain fit"
+    )
+    parser.add_argument(
+        "-p", "--compute-pe", action="store_true", help="Do p.e. spectrum analysis"
+    )
+    parser.add_argument(
+        "-d", "--compute-dcr", action="store_true", help="Compute DCR after analysis"
+    )
+    parser.add_argument(
+        "-g", "--compute-gain", action="store_true", help="Compute linear gain fit after analysis"
+    )
+    parser.add_argument(
+        "-s", "--compute-snr", action="store_true", help="Compute SNR after analysis"
+    )
+    args = parser.parse_args()
+
+    logger = setup_logging(LOG_FILE, level=logging.INFO)
+    try:
+        analyzer = PESpectrumAnalyzer(logger=logger)
+        if args.compute_pe:
+            analyzer.run()
+        if args.compute_dcr:
+            analyzer.compute_dark_count_rate(time_mode="aux")
+        if args.compute_gain:
+            analyzer.compute_linear_gain_fit()
+        if args.compute_snr:
+            analyzer.plot_snr()
+
+        logger.info("Processing complete.")
+    except Exception as e:
+        logger.exception("Fatal error: %s", e)
+        raise
+
+
+# --------------------------
+# CLI entrypoint
+# --------------------------
+if __name__ == "__main__":
+    main()
