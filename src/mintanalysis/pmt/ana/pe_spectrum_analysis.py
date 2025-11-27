@@ -1,3 +1,5 @@
+import os
+
 import awkward as ak
 import matplotlib.pyplot as plt
 import numpy as np
@@ -5,7 +7,6 @@ import yaml
 from iminuit import Minuit
 from lgdo import lh5
 from matplotlib.backends.backend_pdf import PdfPages
-from scipy.optimize import curve_fit
 
 
 def valley_index_strict(y):
@@ -60,17 +61,18 @@ def linear_func(x, a, b):
 
 if __name__ == "__main__":
 
-    with open(
-        "/home/pkrause/noise_hunt/data/p-1-1-om-hs-31/ref-v0.0.0/generated/tier/aux/r020/p-1-1-om-hs-31.yaml",
-    ) as file:
+    f_aux = "/home/pkrause/noise_hunt/data/p-1-1-om-hs-31/ref-v0.0.0/generated/tier/aux/r020/p-1-1-om-hs-31.yaml"
+    f_result = "/home/pkrause/software/mint-analysis/debug_out/results.yaml"
+    with open(f_aux) as file:
         aux_dict = yaml.safe_load(file)
 
     raw_path = (
         "/home/pkrause/noise_hunt/data/p-1-1-om-hs-31/ref-v0.0.0/generated/tier/raw/r020/r020"
     )
-    out_folder = "/home/pkrause/software/mint-analysis/debug_out/"
+    plot_folder = "/home/pkrause/software/mint-analysis/debug_out/pe_spectra/"
 
-    f_result = "result.yaml"
+    override_results = True
+
     bin_size = 20
     bins = np.arange(-100, 10000, bin_size)
     lim = 20
@@ -84,11 +86,14 @@ if __name__ == "__main__":
         )
         f_dsp = f_raw.replace("raw", "dsp")
 
-        with PdfPages(out_folder + f"pe_spectra_{run}.pdf") as pdf:
+        with PdfPages(plot_folder + f"pe_spectra_{run}.pdf") as pdf:
             for ch in lh5.ls(f_dsp):
                 pmt = int(ch[2:]) + 1
                 result_dic[run][pmt] = {}
-                result_dic[run][pmt]["voltages_in_V"] = aux_dict[run]["voltages_in_V"][int(ch[2:])]
+                result_dic[run][pmt]["voltage"] = {
+                    "val": aux_dict[run]["voltages_in_V"][int(ch[2:])],
+                    "unit": "V",
+                }
                 fig, ax = plt.subplots()
                 fig.set_figwidth(A4_LANDSCAPE[0])
                 fig.set_figheight(A4_LANDSCAPE[1])
@@ -101,7 +106,7 @@ if __name__ == "__main__":
                     pe_vals,
                     bins=bins,
                     histtype="step",
-                    label=f"channel {ch} ON ({result_dic[run][pmt]['voltages_in_V']:.2f} V)",
+                    label=f"channel {ch} ON ({result_dic[run][pmt]['voltage']['val']:.2f} {result_dic[run][pmt]['voltage']['unit']})",
                 )
 
                 if aux_dict[run]["voltages_in_V"][int(ch[2:])] == 0:
@@ -156,7 +161,11 @@ if __name__ == "__main__":
                 fit_vals = m.values.to_dict()
                 fit_errs = m.errors.to_dict()
 
-                result_dic[run][pmt]["pe_peak"] = {"vals": fit_vals, "errs": fit_errs}
+                result_dic[run][pmt]["pe_peak_fit"] = {
+                    "mean": {"val": fit_vals["mu"], "err": fit_errs["mu"], "unit": "NNLS"},
+                    "sigma": {"val": fit_vals["sigma"], "err": fit_errs["sigma"], "unit": "NNLS"},
+                    "amp": {"val": fit_vals["amp"], "err": fit_errs["amp"], "unit": ""},
+                }
 
                 y_fit = gaussian(
                     bin_centers, amp=m.values["amp"], mu=m.values["mu"], sigma=m.values["sigma"]
@@ -176,72 +185,58 @@ if __name__ == "__main__":
                 plt.close()
 
                 ######################
-                # DCR calculation    #
+                # spectrum values    #
                 ######################
 
-                dcts = np.sum(y_fit[:valley_idx]) + np.sum(n[valley_idx:])
-
-                # TODO fix timestamps in raw (they are sample numbers currently)
-                ts = lh5.read_as(f"{ch}/raw/timestamp", f_raw, "np")
-                dt = (ts.max() - ts.min()) * 4.8e-9
-
-                result_dic[run][pmt]["dcr"] = {
-                    "dcr": {"dcr": float(dcts / dt), "counts": float(dcts), "runtime_s": float(dt)}
+                result_dic[run][pmt]["statistics"] = {
+                    "1st_pe_fit_integral_below_valley": {
+                        "val": float(np.sum(y_fit[:valley_idx])),
+                        "unit": "",
+                    },
+                    "cts_above_valley": {"val": int(np.sum(n[:valley_idx])), "unit": ""},
+                    "cts_below_valley": {"val": int(np.sum(n[valley_idx:])), "unit": ""},
+                    "1st_pe_fit_integral": {"val": int(float(np.sum(y_fit))), "unit": ""},
+                    "total_cts": {"val": int(np.sum(n)), "unit": ""},
+                    "valley": {
+                        "pos": {"val": float(bin_centers[valley_idx]), "unit": "NNLS"},
+                        "amp": int(n[valley_idx]),
+                    },
+                    "1st_pe_guess": {
+                        "pos": {"val": float(mu0), "unit": "NNLS"},
+                        "amp": {"val": int(amp0), "unit": ""},
+                    },
                 }
 
-    ######################
-    # Gain calculation   #
-    ######################
-    tmp_dic = {}
-    for _, run in result_dic.items():
-        for pmt in run:
-            if pmt not in tmp_dic:
-                tmp_dic[pmt] = {"voltage": [], "vals": [], "errs": []}
-            v = run[pmt]["voltages_in_V"]
-            if v == 0:
-                continue
-            tmp_dic[pmt]["voltage"].append(v)
-            tmp_dic[pmt]["vals"].append(run[pmt]["pe_peak"]["vals"]["mu"])
-            tmp_dic[pmt]["errs"].append(run[pmt]["pe_peak"]["errs"]["mu"])
+                result_dic[run][pmt]["runtime"] = {"unit": "s"}
+                if "runtime_in_s" in aux_dict[run]:
+                    result_dic[run][pmt]["runtime"]["aux"] = aux_dict[run]["runtime_in_s"]
 
-    with PdfPages(out_folder + "gain_plots.pdf") as pdf:
-        for key, pmt in tmp_dic.items():
-            fig, ax = plt.subplots()
-            fig.set_figwidth(A4_LANDSCAPE[0])
-            fig.set_figheight(A4_LANDSCAPE[1])
-            ax.errorbar(
-                pmt["voltage"],
-                pmt["vals"],
-                pmt["errs"],
-                label=f"PMT {key}",
-                fmt="o",
-            )
-            ax.set_ylabel("PMT position (NNLS units)")
-            ax.set_xlabel("Voltage (V)")
+                if f"{ch}/raw/timestamp_sec" in lh5.ls(
+                    f_raw, f"{ch}/raw/"
+                ) and f"{ch}/raw/timestamp_ps" in lh5.ls(f_raw, f"{ch}/raw/"):
+                    ts = lh5.read_as(f"{ch}/raw/timestamp_sec", f_raw, "np")
+                    ts_ps = lh5.read_as(f"{ch}/raw/timestamp_ps", f_raw, "np")
+                    result_dic[run][pmt]["runtime"]["raw"] = float(
+                        ts[ts.argmax()]
+                        + ts_ps[ts.argmax()] * 1e-12
+                        - (ts[ts.argmin()] + ts_ps[ts.argmin()] * 1e-12)
+                    )
 
-            params, covariance = curve_fit(
-                linear_func,
-                pmt["voltage"],
-                pmt["vals"],
-                sigma=pmt["errs"],
-                absolute_sigma=True,
-            )
-            a_opt, b_opt = params
-            perr = np.sqrt(np.diag(covariance))
-            x = np.linspace(-1 * b_opt / a_opt, 110, 1000)
-            ax.plot(x, linear_func(x, a_opt, b_opt), ls="--", color="red", label="Fit")
+                # support for old raw files
+                elif f"{ch}/raw/timestamp" in lh5.ls(f_raw, f"{ch}/raw/"):
+                    ts = lh5.read_as(f"{ch}/raw/timestamp", f_raw, "np")
+                    result_dic[run][pmt]["runtime"]["raw"] = float((ts.max() - ts.min()) * 4.8e-9)
 
-            tmp_dic[key]["fit"] = {
-                "vals": {"a": float(a_opt), "b": float(b_opt)},
-                "errs": {"a": float(perr[0]), "b": float(perr[1])},
-                "func": "gain_in_NNLS_units = a*voltage_in_V+b",
-            }
+if os.path.exists(f_result):
+    with open(f_result) as file:
+        tmp_dic = yaml.safe_load(file)
+    if "pe_spectrum" in tmp_dic.keys() and not override_results:
+        raise RuntimeError("Already exists and override flag is not set")
+    else:
+        tmp_dic["pe_spectrum"] = result_dic
+        with open(f_result, "w") as file:
+            yaml.safe_dump(tmp_dic, file, default_flow_style=False)
 
-            ax.legend()
-            pdf.savefig()
-            plt.close()
-
-    result_dic["gain"] = tmp_dic
-
-with open(out_folder + "results.yaml", "w") as file:
-    aux_dict = yaml.safe_dump(result_dic, file, default_flow_style=False)
+else:
+    with open(f_result, "w") as file:
+        yaml.safe_dump({"pe_spectrum": result_dic}, file, default_flow_style=False)
