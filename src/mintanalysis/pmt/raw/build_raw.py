@@ -4,6 +4,10 @@ import awkward as ak
 import numpy as np
 import tqdm
 
+import logging
+import os
+
+
 # LEGEND specific imports
 from lgdo import (
     Array,
@@ -40,13 +44,11 @@ def timestamps_sec_ps(
 
     # Use object dtype to prevent overflow during computation
     ticks = np.asarray(ticks, dtype=object)
-
     total_ps = start_seconds * 10**12 + start_ps + ticks * tick_unit
-    sec, ps = divmod(total_ps, 10**12)
-    sec = np.array(sec, dtype=np.int64)
-    ps = np.array(ps, dtype=np.int64)
+    vdivmod = np.vectorize(lambda x: divmod(x, 10**12), otypes=[object, object])
+    sec, ps = vdivmod(total_ps)
 
-    return sec, ps
+    return sec.astype(np.int64), ps.astype(np.int64)
 
 
 def build_raw(
@@ -56,7 +58,6 @@ def build_raw(
     ticks_value_ns: float = 4.8,
     trigger_offset: int = 0,
     verbose: bool = False,
-    wo_mode: str = "write_safe",
 ):
     """
     Decode fastDAQ eng. format to lh5
@@ -75,13 +76,13 @@ def build_raw(
         Trigger offset from 0 (in ADC samples).
     verbose : bool, optional
         Turn verbosity on.
-    wo_mode : str, optional
-        Write mode. See lh5.write for details. Default is write_safe.
     """
+    logging.info(f"Start processing file {f_daq}")
     with open(f_daq) as f:
         lines = f.readlines()
 
-    # Parse metadata (first 5 lines)
+    # Parse metadata
+    logging.info("Parsing metadata")
     metadata = {}
     i = 0
     for line in lines:
@@ -110,7 +111,9 @@ def build_raw(
     triggers = []
     current_trigger = None
     rec_lenth = -1
+    ch = None
 
+    logging.info(f"Processing body with {len(lines)} lines")
     for li in tqdm.tqdm(lines, desc="Processing file", disable=(not verbose)):
         line = li.strip()
         if not line:
@@ -119,9 +122,9 @@ def build_raw(
 
         if parts[0] == "Trigger":
             if (
-                current_trigger is not None
+                current_trigger is not None and ch is not None
                 and len(current_trigger["waveforms"].keys()) > 0
-                and (jagged or len(current_trigger["waveforms"][0]) == rec_lenth)
+                and (jagged or len(current_trigger["waveforms"][ch]) == rec_lenth)
             ):
                 triggers.append(current_trigger)
 
@@ -151,6 +154,7 @@ def build_raw(
     # ---------------------------
     # Reorganize: channel triggers
     # ---------------------------
+    logging.info("Reorganizing event structure")
     all_channels = sorted({ch for trig in triggers for ch in trig["waveforms"]})
     channels = {ch: [] for ch in all_channels}
     carried_deltas = dict.fromkeys(all_channels, 0)
@@ -172,6 +176,7 @@ def build_raw(
     # ---------------------------
     # Convert to LH5 via Awkward
     # ---------------------------
+    logging.info("Converting to LH5")
     for ch in tqdm.tqdm(all_channels, desc="Convert to LH5", disable=(not verbose)):
         akdata = ak.Array(channels[ch])
         if jagged:
@@ -212,8 +217,8 @@ def build_raw(
             c = Array(ak.to_numpy(akdata.timestamp, allow_missing=False))
             table.add_field("timestamp", c, True)
 
-        lh5.write(table, name="raw", group=f"ch{ch:03}", lh5_file=f_raw, wo_mode=wo_mode)
-
+        lh5.write(table, name="raw", group=f"ch{ch:03}", lh5_file=f_raw)
+    logging.info(f"Done! Raw tier created at {f_raw}")
 
 if __name__ == "__main__":
 
@@ -230,16 +235,38 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    wo_mode = "write_safe"
-    if args.overwrite:
-        wo_mode = "overwrite_file"
-
-    build_raw(
-        f_daq=args.f_daq,
-        f_raw=args.f_raw,
-        jagged=args.jagged,
-        ticks_value_ns=args.tick_value,
-        trigger_offset=args.shift,
-        verbose=args.verbose,
-        wo_mode=wo_mode,
+    current_extension = args.f_raw.split('.')[-1]
+    logging.basicConfig(
+        filename=args.f_raw.replace(current_extension,'log'),
+        level=logging.INFO,
+        format="[%(asctime)s]\t[%(filename)s]\t[%(levelname)s]\t%(message)s",
+        datefmt='%Y-%m-%d %H:%M:%S',
+        filemode="a"
     )
+
+    if os.path.exists(args.f_raw):
+        if args.overwrite:
+            try:
+                os.remove(args.f_raw)
+                logging.info(f"Deleting old file at {args.f_raw}")
+            except PermissionError:
+                logging.error(f"Permission denide to delete {args.f_raw}")
+            except Exception as e:
+                logging.error(f"An error occured while deleting {args.f_raw}: {e}")
+        else:
+            logging.warning(f"{args.f_raw} exist. Data will be appended. This could be unwanted!")
+    
+    else:
+        logging.info(f"{args.f_raw} does not exist. Creating new file")
+        
+    try:
+        build_raw(
+            f_daq=args.f_daq,
+            f_raw=args.f_raw,
+            jagged=args.jagged,
+            ticks_value_ns=args.tick_value,
+            trigger_offset=args.shift,
+            verbose=args.verbose,
+        )
+    except Exception as e:
+        logging.error(f"An error occured while building raw tier: {e}")
