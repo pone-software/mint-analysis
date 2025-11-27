@@ -1,12 +1,10 @@
 import argparse
+import logging
+import os
 
 import awkward as ak
 import numpy as np
 import tqdm
-
-import logging
-import os
-
 
 # LEGEND specific imports
 from lgdo import (
@@ -122,7 +120,8 @@ def build_raw(
 
         if parts[0] == "Trigger":
             if (
-                current_trigger is not None and ch is not None
+                current_trigger is not None
+                and ch is not None
                 and len(current_trigger["waveforms"].keys()) > 0
                 and (jagged or len(current_trigger["waveforms"][ch]) == rec_lenth)
             ):
@@ -220,6 +219,7 @@ def build_raw(
         lh5.write(table, name="raw", group=f"ch{ch:03}", lh5_file=f_raw)
     logging.info(f"Done! Raw tier created at {f_raw}")
 
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Build raw tier from DAQ input.")
@@ -235,13 +235,13 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    current_extension = args.f_raw.split('.')[-1]
+    current_extension = args.f_raw.split(".")[-1]
     logging.basicConfig(
-        filename=args.f_raw.replace(current_extension,'log'),
+        filename=args.f_raw.replace(current_extension, "log"),
         level=logging.INFO,
         format="[%(asctime)s]\t[%(filename)s]\t[%(levelname)s]\t%(message)s",
-        datefmt='%Y-%m-%d %H:%M:%S',
-        filemode="a"
+        datefmt="%Y-%m-%d %H:%M:%S",
+        filemode="a",
     )
 
     if os.path.exists(args.f_raw):
@@ -255,10 +255,10 @@ if __name__ == "__main__":
                 logging.error(f"An error occured while deleting {args.f_raw}: {e}")
         else:
             logging.warning(f"{args.f_raw} exist. Data will be appended. This could be unwanted!")
-    
+
     else:
         logging.info(f"{args.f_raw} does not exist. Creating new file")
-        
+
     try:
         build_raw(
             f_daq=args.f_daq,
