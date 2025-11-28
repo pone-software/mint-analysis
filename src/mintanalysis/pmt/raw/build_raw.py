@@ -56,6 +56,7 @@ def build_raw(
     ticks_value_ns: float = 4.8,
     trigger_offset: int = 0,
     verbose: bool = False,
+    logger: logging.Logger | None = None,
 ):
     """
     Decode fastDAQ eng. format to lh5
@@ -76,12 +77,12 @@ def build_raw(
         Turn verbosity on.
     """
     msg = f"Start processing file {f_daq}"
-    logging.info(msg)
+    logger.info(msg)
     with open(f_daq) as f:
         lines = f.readlines()
 
     # Parse metadata
-    logging.info("Parsing metadata")
+    logger.info("Parsing metadata")
     metadata = {}
     i = 0
     for line in lines:
@@ -113,7 +114,7 @@ def build_raw(
     ch = None
 
     msg = f"Processing body with {len(lines)} lines"
-    logging.info(msg)
+    logger.info(msg)
     for li in tqdm.tqdm(lines, desc="Processing file", disable=(not verbose)):
         line = li.strip()
         if not line:
@@ -155,7 +156,7 @@ def build_raw(
     # ---------------------------
     # Reorganize: channel triggers
     # ---------------------------
-    logging.info("Reorganizing event structure")
+    logger.info("Reorganizing event structure")
     all_channels = sorted({ch for trig in triggers for ch in trig["waveforms"]})
     channels = {ch: [] for ch in all_channels}
     carried_deltas = dict.fromkeys(all_channels, 0)
@@ -177,7 +178,7 @@ def build_raw(
     # ---------------------------
     # Convert to LH5 via Awkward
     # ---------------------------
-    logging.info("Converting to LH5")
+    logger.info("Converting to LH5")
     for ch in tqdm.tqdm(all_channels, desc="Convert to LH5", disable=(not verbose)):
         akdata = ak.Array(channels[ch])
         if jagged:
@@ -221,7 +222,7 @@ def build_raw(
         lh5.write(table, name="raw", group=f"ch{ch:03}", lh5_file=f_raw)
 
     msg = f"Done! Raw tier created at {f_raw}"
-    logging.info(msg)
+    logger.info(msg)
 
 
 if __name__ == "__main__":
@@ -239,34 +240,41 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    current_extension = args.f_raw.split(".")[-1]
-    logging.basicConfig(
-        filename=args.f_raw.replace(current_extension, "log"),
-        level=logging.INFO,
-        format="[%(asctime)s]\t[%(filename)s]\t[%(levelname)s]\t%(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-        filemode="a",
-    )
+    logger = logging.getLogger("daq2raw")
+    log_level = logging.INFO
+    logger.setLevel(log_level)
+
+    fmt = logging.Formatter("[%(asctime)s] [%(name)s - %(funcName)s] [%(levelname)s] %(message)s")
+
+    sh = logging.StreamHandler()
+    sh.setFormatter(fmt)
+    logger.addHandler(sh)
+
+    log_file = args.f_raw.replace(args.f_raw.split(".")[-1], "log")
+    fh = logging.FileHandler(log_file, mode="w")
+    fh.setLevel(log_level)
+    fh.setFormatter(fmt)
+    logger.addHandler(fh)
 
     if os.path.exists(args.f_raw):
         if args.overwrite:
             try:
                 os.remove(args.f_raw)
                 msg = f"Deleting old file at {args.f_raw}"
-                logging.info(msg)
+                logger.info(msg)
             except PermissionError:
                 msg = f"Permission denide to delete {args.f_raw}"
-                logging.error(msg)
+                logger.error(msg)
             except Exception as e:
                 msg = f"An error occurred while deleting {args.f_raw}: {e}"
-                logging.error(msg)
+                logger.error(msg)
         else:
             msg = f"{args.f_raw} exist. Data will be appended. This could be unwanted!"
-            logging.warning(msg)
+            logger.warning(msg)
 
     else:
         msg = f"{args.f_raw} does not exist. Creating new file"
-        logging.info(msg)
+        logger.info(msg)
 
     try:
         build_raw(
@@ -276,7 +284,8 @@ if __name__ == "__main__":
             ticks_value_ns=args.tick_value,
             trigger_offset=args.shift,
             verbose=args.verbose,
+            logger=logger,
         )
     except Exception as e:
         msg = f"An error occurred while building raw tier: {e}"
-        logging.error(msg)
+        logger.error(msg)
