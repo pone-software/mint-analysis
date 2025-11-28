@@ -6,7 +6,7 @@ import numpy as np
 from lgdo import lh5
 
 
-def gumbel_pdf(x: np.ndarray, mu: float, sigma: float):
+def gumbel_pdf(x: np.ndarray, mu: float, sigma: float, norm: float = 1):
     """
     Create a Gumbel PDF (https://en.wikipedia.org/wiki/Gumbel_distribution)
 
@@ -18,7 +18,8 @@ def gumbel_pdf(x: np.ndarray, mu: float, sigma: float):
         Mean position of the Gumble PDF.
     sigma : float
         Width of the Gumble PDF in sigma.
-
+    norm : float
+        A normalization factor
     Returns
     -------
     ndarray
@@ -26,7 +27,7 @@ def gumbel_pdf(x: np.ndarray, mu: float, sigma: float):
     """
     beta = sigma * (np.sqrt(6) / np.pi)
     z = (x - mu) / beta
-    return (1 / beta) * np.exp(-(z + np.exp(-1 * z)))
+    return (norm / beta) * np.exp(-(z + np.exp(-1 * z)))
 
 
 def downsample(x: np.ndarray, N: int):
@@ -77,24 +78,32 @@ def create_nnls_database(
         Optional: Pass additional folding method
 
     """
-    data = lh5.read_as(f"{lh5.ls(f_raw)[0]}/raw", f_raw, "ak")
-    x = np.arange(0, len(data.waveform.values[0]) * daq_sampling, daq_sampling / upsampling_factor)
-    A = np.zeros((len(data.waveform.values[0]), len(x)))
+    data = lh5.read_as(f"{lh5.ls(f_raw)[0]}/raw/waveform/values", f_raw, "np")
+    x = np.arange(0, len(data[0]) * daq_sampling, daq_sampling / upsampling_factor)
+    A = np.zeros((len(data[0]), len(x)))
     for i in range(len(x)):
         if folding_func:
             A[:, i] = downsample(
-                folding_func(gumbel_pdf(x, x[i], gumble_sigma), *args, **kwargs), upsampling_factor
+                folding_func(
+                    gumbel_pdf(x, x[i], gumble_sigma, daq_sampling / upsampling_factor),
+                    *args,
+                    **kwargs,
+                ),
+                upsampling_factor,
             )
         else:
-            A[:, i] = downsample(gumbel_pdf(x, x[i], gumble_sigma), upsampling_factor)
+            A[:, i] = downsample(
+                gumbel_pdf(x, x[i], gumble_sigma, daq_sampling / upsampling_factor),
+                upsampling_factor,
+            )
 
     db_dic = {
         "gumbel": {
-            "sigma_in_ns": gumble_sigma,
+            "sigma_in_ns": gumble_sigma * 1e9,
             "right_hand_vector_length": A.shape[0],
-            "right_hand_vector_resolution_in_ns": daq_sampling,
+            "right_hand_vector_resolution_in_ns": daq_sampling * 1e9,
             "solution_vector_length": A.shape[1],
-            "solution_vector_resolution_in_ns": daq_sampling / upsampling_factor,
+            "solution_vector_resolution_in_ns": daq_sampling * 1e9 / upsampling_factor,
             "template function": "gumbel pdf",
             "matrix": A.tolist(),
         }
@@ -109,14 +118,16 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="A simple example script.")
     parser.add_argument("-r", "--f_raw", help="Path to raw file", required=True)
     parser.add_argument("-d", "--f_db", help="Path to database file", required=True)
-    parser.add_argument("-d", "--f_db", help="Path to database file", required=True)
     parser.add_argument(
         "-u",
         "--upsampling_factor",
         default=10,
+        type=int,
         help="Upsampling factor relative to DAQ sampling time",
     )
-    parser.add_argument("-s", "--sigma", default=4, help="Sigma of the gumble function in ns")
+    parser.add_argument(
+        "-s", "--sigma", default=4, type=float, help="Sigma of the gumble function in ns"
+    )
     parser.add_argument(
         "-o", "--overwrite", action="store_true", help="Override existing output file"
     )
