@@ -32,22 +32,15 @@ from matplotlib.backends.backend_pdf import PdfPages
 from scipy.optimize import curve_fit
 
 # --------------------------
-# Configuration / Constants
+# TODO For Debugging only!
 # --------------------------
-AUX_YAML = Path(
-    "/home/pkrause/noise_hunt/data/p-1-1-om-hs-31/ref-v0.0.0/generated/tier/aux/r020/p-1-1-om-hs-31.yaml"
-)
 RAW_DIR = Path("/home/pkrause/noise_hunt/data/p-1-1-om-hs-31/ref-v0.0.0/generated/tier/raw/r020")
-RESULT_YAML = Path("/home/pkrause/software/mint-analysis/debug_out/results.yaml")
-PLOT_FOLDER = Path("/home/pkrause/software/mint-analysis/debug_out/pe_spectra/")
-LOG_FILE = Path("/home/pkrause/software/mint-analysis/debug_out/pe_spectrum.log")
+RESULT_DIR = Path("/home/pkrause/software/mint-analysis/debug_out")
 
-# Analysis constants
-BIN_SIZE = 20
-BINS = np.arange(-100, 10000, BIN_SIZE)
-LIM = 20
+# --------------------------
+# Constants
+# --------------------------
 A4_LANDSCAPE = (11.69, 8.27)
-OVERRIDE_RESULTS = True
 
 
 # --------------------------
@@ -55,7 +48,9 @@ OVERRIDE_RESULTS = True
 # --------------------------
 
 
-def setup_logging(log_file: Path = LOG_FILE, level: int = logging.INFO) -> logging.Logger:
+def setup_logging(
+    log_file: Path = RESULT_DIR / "analysis.log", level: int = logging.INFO
+) -> logging.Logger:
     logger = logging.getLogger("PESpectrum")
     logger.setLevel(level)
     logger.propagate = False
@@ -135,14 +130,10 @@ def valley_index_strict(y: np.ndarray) -> tuple[int, int] | None:
 class PESpectrumAnalyzer:
     def __init__(
         self,
-        aux_yaml: Path = AUX_YAML,
-        raw_dir: Path = RAW_DIR,
-        plot_folder: Path = PLOT_FOLDER,
-        result_yaml: Path = RESULT_YAML,
-        bins: np.ndarray = BINS,
-        bin_size: int = BIN_SIZE,
-        lim: int = LIM,
-        override_results: bool = OVERRIDE_RESULTS,
+        aux_yaml: Path,
+        bin_size: int = 20,
+        lim: float = 20,
+        override_results: bool = False,
         logger: logging.Logger | None = None,
         up_sampling_ratio: float = 24 / 240,
         v_per_adc: float = 0.25e-3,
@@ -151,11 +142,11 @@ class PESpectrumAnalyzer:
         calib: str = "None",
     ) -> None:
         self.aux_yaml = aux_yaml
-        self.raw_dir = raw_dir
-        self.plot_folder = plot_folder
-        self.result_yaml = result_yaml
-        self.bins = bins
+        self.raw_dir = RAW_DIR
+        self.plot_folder = RESULT_DIR / "plots"
+        self.result_yaml = RESULT_DIR / "results.yaml"
         self.bin_size = bin_size
+        self.bins = np.arange(-100, 10000, bin_size)
         self.lim = lim
         self.override_results = override_results
         self.logger = logger or setup_logging()
@@ -853,11 +844,41 @@ def main() -> None:
         choices=["pC", "adc", "gain", "None"],
         help="Choose a charge calibration value (pC, adc, gain, or None)",
     )
+    parser.add_argument(
+        "-b",
+        "--bin_size",
+        type=int,
+        default=20,
+        help="Number of bins used for analysis",
+    )
+    parser.add_argument(
+        "-l",
+        "--nnls_limit",
+        type=float,
+        default=20,
+        help="Lower limit for solutions in the NNLS solution vector to be accepted.",
+    )
+    parser.add_argument(
+        "-a",
+        "--aux_file",
+        help="Path to auxiliary file",
+    )
+    parser.add_argument(
+        "-o", "--override", action="store_true", help="Override results if existing"
+    )
+
     args = parser.parse_args()
 
-    logger = setup_logging(LOG_FILE, level=logging.INFO)
+    logger = setup_logging(level=logging.INFO)
     try:
-        analyzer = PESpectrumAnalyzer(logger=logger, calib=args.calibrate)
+        analyzer = PESpectrumAnalyzer(
+            logger=logger,
+            aux_yaml=Path(args.aux_file),
+            bin_size=args.bin_size,
+            lim=args.nnls_limit,
+            override_results=args.override,
+            calib=args.calibrate,
+        )
         if args.compute_pe:
             analyzer.run()
         if args.compute_dcr:
