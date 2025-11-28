@@ -22,7 +22,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import awkward as ak
 import matplotlib.pyplot as plt
 import numpy as np
 import yaml
@@ -247,7 +246,7 @@ class PESpectrumAnalyzer:
 
         # load data
         try:
-            d = lh5.read_as(f"{ch}/dsp", f_dsp, "ak")
+            vals = lh5.read_as(f"{ch}/dsp/nnls_solution/values", f_dsp, "np")
         except Exception as e:
             msg = f"Failed to read DSP for {ch} in {f_dsp}: {e}"
             self.logger.warning(msg)
@@ -255,7 +254,6 @@ class PESpectrumAnalyzer:
 
         # compute pe-values
         try:
-            vals = ak.to_numpy(d.nnls_solution.values, allow_missing=False)
             pe_vals = np.nansum(np.where(vals > self.lim, vals, np.nan), axis=1)
         except Exception as e:
             msg = f"Failed to compute pe values for {ch}: {e}"
