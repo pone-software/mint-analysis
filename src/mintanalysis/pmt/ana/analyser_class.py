@@ -144,6 +144,11 @@ class PESpectrumAnalyzer:
         lim: int = LIM,
         override_results: bool = OVERRIDE_RESULTS,
         logger: logging.Logger | None = None,
+        up_sampling_ratio: float = 24 / 240,
+        v_per_adc: float = 0.25e-3,
+        adc_impedance: float = 75.0,
+        sampling_time: float = 4.8e-9,
+        calib: str = "None",
     ) -> None:
         self.aux_yaml = aux_yaml
         self.raw_dir = raw_dir
@@ -156,6 +161,11 @@ class PESpectrumAnalyzer:
         self.logger = logger or setup_logging()
         self.aux = self._load_aux()
         self.plot_folder.mkdir(parents=True, exist_ok=True)
+        self.up_sampling_ratio = up_sampling_ratio
+        self.v_per_adc = v_per_adc
+        self.adc_impedance = adc_impedance
+        self.sampling_time = sampling_time
+        self.calib = calib
 
     # ----------------------
     # I/O helpers
@@ -269,6 +279,9 @@ class PESpectrumAnalyzer:
             histtype="step",
             label=f"channel {ch} (PMT {pmt}) at {voltage:.2f} V",
         )
+
+        if self.calib != "None":
+            self._add_charge_axis(ax, False)
 
         bin_centers = 0.5 * (bins[1:] + bins[:-1])
 
@@ -461,6 +474,71 @@ class PESpectrumAnalyzer:
                 yaml.safe_dump({"pe_spectrum": results}, f, default_flow_style=False)
             self.logger.info("Wrote new result YAML at %s", self.result_yaml)
 
+    def _add_charge_axis(self, ax: plt.Axes, is_y) -> None:
+        """
+        This function add a axis in new units to a given axis plot.
+
+        Parameters
+        ----------
+        ax : plt.Axes
+            The plot to which to add the pC axis.
+        is_y : bool
+            If True add a new y-axis. Else an x-axis.
+        """
+        if self.calib not in ["pC", "adc", "gain"]:
+            self.logger.warning("Invalid calibration unit, not calibrating.")
+            return
+
+        label = "Charge "
+        if self.calib == "pC":
+            func = (
+                lambda x: x
+                * (
+                    (self.v_per_adc * self.up_sampling_ratio * self.sampling_time)
+                    / self.adc_impedance
+                )
+                * 1e12,
+                lambda y: y
+                / (
+                    (
+                        (self.v_per_adc * self.up_sampling_ratio * self.sampling_time)
+                        / self.adc_impedance
+                    )
+                    * 1e12
+                ),
+            )
+            label += "(pC)"
+
+        elif self.calib == "gain":
+            label = "Gain (a.u.)"
+            elem = 1.602e-19  # C (elementary charge)
+            func = (
+                lambda x: x
+                * (
+                    (self.v_per_adc * self.up_sampling_ratio * self.sampling_time)
+                    / self.adc_impedance
+                )
+                / elem,
+                lambda y: y
+                / (
+                    (
+                        (self.v_per_adc * self.up_sampling_ratio * self.sampling_time)
+                        / self.adc_impedance
+                    )
+                    / elem
+                ),
+            )
+
+        elif self.calib == "adc":
+            label += f"(ADC x {self.sampling_time*1e9:.1f} ns)"
+            func = (lambda x: x * self.up_sampling_ratio, lambda y: y / self.up_sampling_ratio)
+        if is_y:
+            secax_y = ax.secondary_yaxis("right", functions=func)
+            secax_y.set_ylabel(label)
+        else:
+            secax_x = ax.secondary_xaxis("top", functions=func)
+            secax_x.set_xlabel(label)
+
     # ----------------------
     # Signal to Noise Ratio (SNR)
     # ----------------------
@@ -643,6 +721,10 @@ class PESpectrumAnalyzer:
                 ax.errorbar(pmt["voltage"], pmt["vals"], pmt["errs"], fmt="o", label=f"PMT {key}")
                 ax.set_xlabel(f"Voltage ({x_unit})")
                 ax.set_ylabel(f"PMT position ({y_unit})")
+
+                if self.calib != "None":
+                    self._add_charge_axis(ax, True)
+
                 params, covariance = curve_fit(
                     linear_func,
                     pmt["voltage"],
@@ -676,6 +758,72 @@ class PESpectrumAnalyzer:
             yaml.safe_dump(data, f, default_flow_style=False)
         self.logger.info("Linear gain fit results saved to %s", self.result_yaml)
 
+    def calibrate_nnls_values(self, calibration_func, output_file, new_unit):
+        """
+        Reads the current results.yaml, finds all entries that contain a dict with
+        keys {"val": <number>, "unit": "NNLS"}, applies calibration_func(val)
+        and writes a calibrated result file.
+        """
+        factor = calibration_func(1)
+        try:
+            with open(self.result_yaml) as f:
+                data = yaml.safe_load(f)
+        except Exception as e:
+            msg = f"Failed to load file: {e}"
+            self.logger.error(msg)
+            raise
+
+        def classify(unit: str):
+            unit = str(unit)
+            if unit == "NNLS" or unit.startswith("NNLS/"):
+                return "nnls"
+            if "/NNLS" in unit:
+                return "per_nnls"
+            if "NNLS" in unit:
+                return "nnls"
+            return None
+
+        def recurse(obj):
+            if isinstance(obj, dict):
+                if set(obj.keys()) >= {"val", "unit"}:
+                    kind = classify(obj.get("unit"))
+                    if kind == "nnls":
+                        try:
+                            obj["val"] = obj["val"] * factor
+                            if "err" in obj:
+                                obj["err"] = obj["err"] * factor
+                            obj["unit"] = obj["unit"].replace("NNLS", new_unit)
+                        except Exception as e:
+                            msg = f"NNLS calibration failed for value {obj}: {e}"
+                            self.logger.error(msg)
+                    elif kind == "per_nnls":
+                        try:
+                            obj["val"] = obj["val"] / factor
+                            if "err" in obj:
+                                obj["err"] = obj["err"] / factor
+                            obj["unit"] = obj["unit"].replace("NNLS", new_unit)
+                        except Exception as e:
+                            msg = f"per-NNLS calibration failed for value {obj}: {e}"
+                            self.logger.error(msg)
+                for _, v in obj.items():
+                    recurse(v)
+            elif isinstance(obj, list):
+                for item in obj:
+                    recurse(item)
+
+        recurse(data)
+
+        try:
+            with open(output_file, "w") as f:
+                yaml.safe_dump(data, f, default_flow_style=False)
+        except Exception as e:
+            msg = f"Failed to write calibrated file: {e}"
+            self.logger.error(msg)
+            raise
+
+        msg = f"Calibrated results written to {output_file}"
+        self.logger.info(msg)
+
 
 # --------------------------
 # CLI entrypoint
@@ -698,11 +846,18 @@ def main() -> None:
     parser.add_argument(
         "-s", "--compute-snr", action="store_true", help="Compute SNR after analysis"
     )
+    parser.add_argument(
+        "-c",
+        "--calibrate",
+        default="None",
+        choices=["pC", "adc", "gain", "None"],
+        help="Choose a charge calibration value (pC, adc, gain, or None)",
+    )
     args = parser.parse_args()
 
     logger = setup_logging(LOG_FILE, level=logging.INFO)
     try:
-        analyzer = PESpectrumAnalyzer(logger=logger)
+        analyzer = PESpectrumAnalyzer(logger=logger, calib=args.calibrate)
         if args.compute_pe:
             analyzer.run()
         if args.compute_dcr:
@@ -711,6 +866,36 @@ def main() -> None:
             analyzer.compute_linear_gain_fit()
         if args.compute_snr:
             analyzer.plot_snr()
+        if args.calibrate != "None":
+            if args.calibrate == "pC":
+                analyzer.calibrate_nnls_values(
+                    lambda x: x
+                    * (
+                        (analyzer.v_per_adc * analyzer.up_sampling_ratio * analyzer.sampling_time)
+                        / analyzer.adc_impedance
+                    )
+                    * 1e12,
+                    str(analyzer.result_yaml).replace(".yaml", "_pC_calibrated.yaml"),
+                    "pC",
+                )
+            elif args.calibrate == "adc":
+                analyzer.calibrate_nnls_values(
+                    lambda x: x * analyzer.up_sampling_ratio,
+                    str(analyzer.result_yaml).replace(".yaml", "_adc_calibrated.yaml"),
+                    "ADC",
+                )
+            elif args.calibrate == "gain":
+                elem = 1.602e-19  # C (elementary charge)
+                analyzer.calibrate_nnls_values(
+                    lambda x: x
+                    * (
+                        (analyzer.v_per_adc * analyzer.up_sampling_ratio * analyzer.sampling_time)
+                        / analyzer.adc_impedance
+                    )
+                    / elem,
+                    str(analyzer.result_yaml).replace(".yaml", "_gain_calibrated.yaml"),
+                    "a.u.",
+                )
 
         logger.info("Processing complete.")
     except Exception as e:
