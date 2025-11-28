@@ -20,7 +20,7 @@ processors:
     - ADC
     - ADC
   wf_blsub:
-    description: subract baseline from waveform
+    description: subtract baseline from waveform
     function: subtract
     module: numpy
     args:
