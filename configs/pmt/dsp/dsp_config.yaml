@@ -1,26 +1,9 @@
 outputs:
-- wf_blsub
-- tp_max
-- wf_max
+- sum_charge
 - nnls_solution
-- wf_upsampled
-- t0
+- bl_mean
+- bl_std
 processors:
-  tp_min, tp_max, wf_min, wf_max:
-    description: find waveform max and min and the corresponding timepoints
-    function: min_max
-    module: dspeed.processors
-    args:
-    - wf_blsub
-    - tp_min
-    - tp_max
-    - wf_min
-    - wf_max
-    unit:
-    - ns
-    - ns
-    - ADC
-    - ADC
   bl_mean , bl_std, bl_slope, bl_intercept:
     description: finds mean and rms of waveform initial samples
     function: linear_slope_fit
@@ -37,7 +20,7 @@ processors:
     - ADC
     - ADC
   wf_blsub:
-    description: subtract baseline from waveform
+    description: subract baseline from waveform
     function: subtract
     module: numpy
     args:
@@ -46,53 +29,28 @@ processors:
     - wf_blsub
     unit: ADC
   nnls_solution:
+    description: Find the NNLS solution vector
     function: optimize_nnls
     module: dspeed.processors
     args:
-    - db.coefficient_matrix
+    - db.gumbel.matrix
     - wf_blsub
-    - '1000'
+    - '2000'
     - 1e-6
-    - 'True'
-    - nnls_solution(db.solution_vector_length, period=db.solution_vector_resolution_in_ns*ns)
-    unit: ADC/sample
-  wf_upsampled:
-    description: get upsampled waveform
-    function: matmul
+    - 'False'
+    - 0
+    - nnls_solution(db.gumbel.solution_vector_length, period=db.gumbel.solution_vector_resolution_in_ns*ns)
+    unit: ADC
+  sum_charge:
+    function: nansum
     module: numpy
     args:
-    - nnls_solution
-    - db.upsampled_matrix
-    - wf_upsampled(db.solution_vector_length, period = db.solution_vector_resolution_in_ns*ns)
-    unit: ADC
+    - wf_blsub
+    - 1
+    - null
+    - sum_charge
     kwargs:
-      signature: (n),(n,n)->(n)
+      signature: "(n),(),()->()"
       types:
-      - dd->d
-  tp_min_up, tp_max_up, wf_min_up, wf_max_up:
-    description: find waveform max and min and the corresponding timepoints
-    function: min_max
-    module: dspeed.processors
-    args:
-    - wf_upsampled
-    - tp_min_up
-    - tp_max_up
-    - wf_min_up
-    - wf_max_up
-    unit:
-    - ns
-    - ns
-    - ADC
-    - ADC
-  t0:
-    description: walks backwards through asymmetric trap convolved waveform until
-      below threshold which defines t0
-    function: time_point_thresh
-    module: dspeed.processors
-    args:
-    - wf_upsampled
-    - '5'
-    - tp_max_up
-    - 0
-    - t0
-    unit: ns
+      - fif->f
+    unit: ADC
