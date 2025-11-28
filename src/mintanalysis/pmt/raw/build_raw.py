@@ -75,7 +75,8 @@ def build_raw(
     verbose : bool, optional
         Turn verbosity on.
     """
-    logging.info(f"Start processing file {f_daq}")
+    msg = f"Start processing file {f_daq}"
+    logging.info(msg)
     with open(f_daq) as f:
         lines = f.readlines()
 
@@ -111,7 +112,8 @@ def build_raw(
     rec_lenth = -1
     ch = None
 
-    logging.info(f"Processing body with {len(lines)} lines")
+    msg = f"Processing body with {len(lines)} lines"
+    logging.info(msg)
     for li in tqdm.tqdm(lines, desc="Processing file", disable=(not verbose)):
         line = li.strip()
         if not line:
@@ -217,7 +219,9 @@ def build_raw(
             table.add_field("timestamp", c, True)
 
         lh5.write(table, name="raw", group=f"ch{ch:03}", lh5_file=f_raw)
-    logging.info(f"Done! Raw tier created at {f_raw}")
+
+    msg = f"Done! Raw tier created at {f_raw}"
+    logging.info(msg)
 
 
 if __name__ == "__main__":
@@ -248,16 +252,21 @@ if __name__ == "__main__":
         if args.overwrite:
             try:
                 os.remove(args.f_raw)
-                logging.info(f"Deleting old file at {args.f_raw}")
+                msg = f"Deleting old file at {args.f_raw}"
+                logging.info(msg)
             except PermissionError:
-                logging.error(f"Permission denide to delete {args.f_raw}")
+                msg = f"Permission denide to delete {args.f_raw}"
+                logging.error(msg)
             except Exception as e:
-                logging.error(f"An error occured while deleting {args.f_raw}: {e}")
+                msg = f"An error occurred while deleting {args.f_raw}: {e}"
+                logging.error(msg)
         else:
-            logging.warning(f"{args.f_raw} exist. Data will be appended. This could be unwanted!")
+            msg = f"{args.f_raw} exist. Data will be appended. This could be unwanted!"
+            logging.warning(msg)
 
     else:
-        logging.info(f"{args.f_raw} does not exist. Creating new file")
+        msg = f"{args.f_raw} does not exist. Creating new file"
+        logging.info(msg)
 
     try:
         build_raw(
@@ -269,4 +278,5 @@ if __name__ == "__main__":
             verbose=args.verbose,
         )
     except Exception as e:
-        logging.error(f"An error occured while building raw tier: {e}")
+        msg = f"An error occurred while building raw tier: {e}"
+        logging.error(msg)
