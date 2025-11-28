@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -130,6 +131,7 @@ class PESpectrumAnalyzer:
     def __init__(
         self,
         aux_yaml: Path,
+        keys: list | None = None,
         bin_size: int = 20,
         lim: float = 20,
         override_results: bool = False,
@@ -141,6 +143,7 @@ class PESpectrumAnalyzer:
         calib: str = "None",
     ) -> None:
         self.aux_yaml = aux_yaml
+        self.keys = keys
         self.raw_dir = RAW_DIR
         self.plot_folder = RESULT_DIR / "plots"
         self.result_yaml = RESULT_DIR / "results.yaml"
@@ -167,7 +170,36 @@ class PESpectrumAnalyzer:
         with open(self.aux_yaml) as f:
             aux = yaml.safe_load(f)
         self.logger.info("Loaded aux YAML: %s", self.aux_yaml)
-        return aux
+
+        if self.keys is None:
+            return aux
+        ret = {}
+        for k in self.keys:
+            if k in aux:
+                ret[k] = aux[k]
+            else:
+                msg = f"Key {k} not in aux file, skipping."
+                self.logger.warning(msg)
+        return ret
+
+    def _save_results(self, results: dict[str, dict[int, dict[str, Any]]], key: str) -> None:
+        if self.result_yaml.exists():
+            with open(self.result_yaml) as f:
+                existing = yaml.safe_load(f) or {}
+            if key in existing and not self.override_results:
+                msg = key + " results already present and override flag is False."
+                self.logger.error(msg)
+                raise RuntimeError(msg)
+
+            existing[key] = results
+            with open(self.result_yaml, "w") as f:
+                yaml.safe_dump(existing, f, default_flow_style=False)
+            self.logger.info("Updated result YAML at %s", self.result_yaml)
+
+        else:
+            with open(self.result_yaml, "w") as f:
+                yaml.safe_dump({key: results}, f, default_flow_style=False)
+            self.logger.info("Wrote new result YAML at %s", self.result_yaml)
 
     # ----------------------
     # Public entrypoints
@@ -181,7 +213,7 @@ class PESpectrumAnalyzer:
             except FileNotFoundError as e:
                 self.logger.exception("Critical file missing for run %s: %s", run_name, e)
                 raise
-        self._save_results(results)
+        self._save_results(results, "pe_spectrum")
         self.logger.info("All runs processed.")
 
     # ----------------------
@@ -274,18 +306,27 @@ class PESpectrumAnalyzer:
 
         bin_centers = 0.5 * (bins[1:] + bins[:-1])
 
+        # total counts
+        result["statistics"] = {
+            "total_cts": {"val": int(np.sum(n)), "unit": ""},
+        }
+
+        # runtime
+        result["runtime"] = {"unit": "s"}
+        if "runtime_in_s" in meta:
+            result["runtime"]["aux"] = meta["runtime_in_s"]
+        raw_runtime = self._extract_runtime_if_present(f_raw, ch)
+        if raw_runtime is not None:
+            result["runtime"]["raw"] = raw_runtime
+
         # noise-only
         if voltage == 0:
             self._decorate_axis(ax)
             # minimal result (no fit)
-            result.update(
-                {"status": "ok", "statistics": {}, "pe_peak_fit": {}, "runtime": {"unit": "s"}}
-            )
-            if "runtime_in_s" in meta:
-                result["runtime"]["aux"] = meta["runtime_in_s"]
-            raw_runtime = self._extract_runtime_if_present(f_raw, ch)
-            if raw_runtime is not None:
-                result["runtime"]["raw"] = raw_runtime
+            msg = "Voltage a 0 --> Noise run"
+            result["status"] = ("skipped",)
+            result["reason"] = (msg,)
+
             return fig, result
 
         # detect valley & peaks
@@ -294,7 +335,9 @@ class PESpectrumAnalyzer:
             msg = "Valley detection failed (no strict peak/valley)."
             self.logger.warning("Run %s ch %s: %s", run_name, ch, msg)
             self._decorate_axis(ax)
-            return fig, {"status": "skipped", "reason": msg}
+            result["status"] = ("skipped",)
+            result["reason"] = (msg,)
+            return fig, result
 
         noise_peak, valley_idx = vi
 
@@ -394,14 +437,6 @@ class PESpectrumAnalyzer:
             result.setdefault("statistics", {})
             result["statistics"]["error"] = str(e)
 
-        # runtime
-        result["runtime"] = {"unit": "s"}
-        if "runtime_in_s" in meta:
-            result["runtime"]["aux"] = meta["runtime_in_s"]
-        raw_runtime = self._extract_runtime_if_present(f_raw, ch)
-        if raw_runtime is not None:
-            result["runtime"]["raw"] = raw_runtime
-
         result["status"] = "ok"
         return fig, result
 
@@ -447,25 +482,9 @@ class PESpectrumAnalyzer:
 
         return None
 
-    def _save_results(self, results: dict[str, dict[int, dict[str, Any]]]) -> None:
-        if self.result_yaml.exists():
-            with open(self.result_yaml) as f:
-                existing = yaml.safe_load(f) or {}
-            if "pe_spectrum" in existing and not self.override_results:
-                msg = "Results already present and override flag is False."
-                raise RuntimeError(msg)
-            existing["pe_spectrum"] = results
-            with open(self.result_yaml, "w") as f:
-                yaml.safe_dump(existing, f, default_flow_style=False)
-            self.logger.info("Updated result YAML at %s", self.result_yaml)
-        else:
-            with open(self.result_yaml, "w") as f:
-                yaml.safe_dump({"pe_spectrum": results}, f, default_flow_style=False)
-            self.logger.info("Wrote new result YAML at %s", self.result_yaml)
-
     def _add_charge_axis(self, ax: plt.Axes, is_y) -> None:
         """
-        This function add a axis in new units to a given axis plot.
+        This function adds a axis in new units to a given axis plot.
 
         Parameters
         ----------
@@ -747,7 +766,7 @@ class PESpectrumAnalyzer:
             yaml.safe_dump(data, f, default_flow_style=False)
         self.logger.info("Linear gain fit results saved to %s", self.result_yaml)
 
-    def calibrate_nnls_values(self, calibration_func, output_file, new_unit):
+    def calibrate_nnls_values(self, calibration_func: Callable, output_file: str, new_unit: str):
         """
         Reads the current results.yaml, finds all entries that contain a dict with
         keys {"val": <number>, "unit": "NNLS"}, applies calibration_func(val)
@@ -864,6 +883,13 @@ def main() -> None:
     parser.add_argument(
         "-o", "--override", action="store_true", help="Override results if existing"
     )
+    parser.add_argument(
+        "-k",
+        "--keys",
+        nargs="+",
+        default=None,
+        help="Only analyse this keys, ignore all other keys in aux file",
+    )
 
     args = parser.parse_args()
 
@@ -872,6 +898,7 @@ def main() -> None:
         analyzer = PESpectrumAnalyzer(
             logger=logger,
             aux_yaml=Path(args.aux_file),
+            keys=args.keys,
             bin_size=args.bin_size,
             lim=args.nnls_limit,
             override_results=args.override,
