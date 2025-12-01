@@ -4,6 +4,7 @@ import logging
 
 import numpy as np
 from dspeed import build_dsp
+from lgdo import lh5
 
 
 def replace_list_with_array(dic: dict):
@@ -38,7 +39,7 @@ if __name__ == "__main__":
         "--f_dsp",
         help="Path to raw file (if omitted replaces all occurrences of raw in f_raw with dsp)",
     )
-    parser.add_argument("-c", "--f_config", help="Path to DSP config file", required=True)
+    parser.add_argument("-c", "--f_config", help="Path to DSP config file")
     parser.add_argument(
         "-e",
         "--f_channel_config",
@@ -73,7 +74,10 @@ if __name__ == "__main__":
         db_dic = json.load(json_file)
 
     db_dic = replace_list_with_array(db_dic)
-    db_dic = {f"ch{i:03}": db_dic for i in range(8)}
+
+    keys = lh5.ls(args.f_raw)
+    if db_dic.keys()[0] not in keys:
+        db_dic = dict.fromkeys(keys, db_dic)
     build_dsp(
         raw_in=args.f_raw,
         dsp_out=f_dsp,
