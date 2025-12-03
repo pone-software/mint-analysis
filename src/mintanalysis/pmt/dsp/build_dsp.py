@@ -31,7 +31,7 @@ def replace_list_with_array(dic: dict):
     return dic
 
 
-if __name__ == "__main__":
+def build_dsp_cli():
     parser = argparse.ArgumentParser(description="Build DSP tier from RAW input.")
     parser.add_argument("-r", "--f_raw", help="Path to raw file", required=True)
     parser.add_argument(
@@ -86,3 +86,7 @@ if __name__ == "__main__":
         chan_config=args.f_channel_config,
         write_mode="r" if args.overwrite else None,
     )
+
+
+if __name__ == "__main__":
+    build_dsp_cli()

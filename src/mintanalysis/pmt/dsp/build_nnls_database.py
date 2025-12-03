@@ -113,9 +113,8 @@ def create_nnls_database(
         json.dump(db_dic, outfile)
 
 
-if __name__ == "__main__":
-
-    parser = argparse.ArgumentParser(description="A simple example script.")
+def build_nnls_database_cli():
+    parser = argparse.ArgumentParser(description="Build a NNLS database file.")
     parser.add_argument("-r", "--f_raw", help="Path to raw file", required=True)
     parser.add_argument("-d", "--f_db", help="Path to database file", required=True)
     parser.add_argument(
@@ -144,3 +143,7 @@ if __name__ == "__main__":
         upsampling_factor=args.upsampling_factor,
         gumble_sigma=args.sigma * 1e-9,
     )
+
+
+if __name__ == "__main__":
+    build_nnls_database_cli()
