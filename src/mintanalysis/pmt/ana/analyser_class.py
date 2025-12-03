@@ -273,8 +273,7 @@ class PESpectrumAnalyzer:
         """
         result: dict[str, Any] = {}
         ch_idx = int(ch[2:])
-        voltage = float(meta["voltages_in_V"][ch_idx])
-        result["voltage"] = {"val": voltage, "unit": "V"}
+        result["voltage"] = meta[ch_idx + 1]["v10"]
 
         # load data
         try:
@@ -298,7 +297,8 @@ class PESpectrumAnalyzer:
             pe_vals,
             bins=self.bins,
             histtype="step",
-            label=f"channel {ch} (PMT {pmt}) at {voltage:.2f} V",
+            label=f"channel {ch} (PMT {pmt}) at {result['voltage']['val']:.2f}"
+            f" {result['voltage']['unit']}",
         )
 
         if self.calib != "None":
@@ -312,15 +312,15 @@ class PESpectrumAnalyzer:
         }
 
         # runtime
-        result["runtime"] = {"unit": "s"}
-        if "runtime_in_s" in meta:
-            result["runtime"]["aux"] = meta["runtime_in_s"]
+        result["runtime"] = {}
+        if "runtime" in meta:
+            result["runtime"]["aux"] = meta["runtime"]
         raw_runtime = self._extract_runtime_if_present(f_raw, ch)
         if raw_runtime is not None:
-            result["runtime"]["raw"] = raw_runtime
+            result["runtime"]["raw"] = {"val": raw_runtime, "unit": "s"}
 
         # noise-only
-        if voltage == 0:
+        if result["voltage"].get("val", 0) <= 10:
             self._decorate_axis(ax)
             # minimal result (no fit)
             msg = "Voltage a 0 --> Noise run"
@@ -651,7 +651,7 @@ class PESpectrumAnalyzer:
                     dcts = stats.get("1st_pe_fit_integral_below_valley", {}).get(
                         "val", 0.0
                     ) + stats.get("cts_above_valley", {}).get("val", 0)
-                    runtime = runtime_info[time_mode]
+                    runtime = runtime_info[time_mode].get("val", 0)
                     run_dcr[pmt] = {
                         "val": float(dcts) / float(runtime),
                         "err": float(dcts**0.5) / float(runtime),
