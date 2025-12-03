@@ -53,10 +53,15 @@ requires-python = ">=3.10, <3.13"
 dynamic = ["version"]
 
 dependencies = [
+"dbetto",
+"iminuit",
+"pymongo",
+"PyYAML",
+"sshtunnel",
 "pygama>=2.0.0",
 "legend-daq2lh5>=1.2.1",
 "legend-pydataobj>=1.7",
-"numpy==1.26.2",
+"numpy",
 "numba>0.52",
 "pandas",
 "matplotlib",
@@ -65,10 +70,8 @@ dependencies = [
 "ipython",
 "ipympl",
 "boost_histogram<1.5",
-#"dspeed==1.6.2",
+"dspeed==2.0.2",
 ]
-
-#"dspeed @ file:///${PROJECT_ROOT}/dspeed",
 
 [project.optional-dependencies]
 test = [
@@ -84,6 +87,10 @@ docs = [
   "sphinx_autodoc_typehints",
   "furo>=2023.08.17",
 ]
+
+[project.scripts]
+# Format: <cli_command_name> = "<module_path>:<function_name>"
+build_ana = "mintanalysis.pmt.ana.analyser_class:main"
 
 #[[tool.uv.index]]
 # Optional name for the index.
