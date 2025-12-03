@@ -225,8 +225,8 @@ def build_raw(
     logger.info(msg)
 
 
-if __name__ == "__main__":
-
+# CLI entry point
+def main():
     parser = argparse.ArgumentParser(description="Build raw tier from DAQ input.")
     parser.add_argument("-r", "--f_raw", help="Path to raw file", required=True)
     parser.add_argument("-d", "--f_daq", help="Path to DAQ file", required=True)
@@ -289,3 +289,7 @@ if __name__ == "__main__":
     except Exception as e:
         msg = f"An error occurred while building raw tier: {e}"
         logger.error(msg)
+
+
+if __name__ == "__main__":
+    main()
