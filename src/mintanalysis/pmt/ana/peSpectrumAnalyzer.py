@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import argparse
 import logging
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -29,11 +28,19 @@ import yaml
 from iminuit import Minuit
 from lgdo import lh5
 from matplotlib.backends.backend_pdf import PdfPages
-from scipy.optimize import curve_fit
-
 from pint import UnitRegistry
-from uncertainties import ufloat, UFloat
+from scipy.optimize import curve_fit
+from uncertainties import ufloat
 
+from .utils import (
+    gaussian,
+    get_physics_object,
+    linear_func,
+    poisson_nll,
+    quantity_to_dict,
+    setup_logging,
+    valley_index_strict,
+)
 
 # --------------------------
 # TODO For Debugging only!
@@ -47,39 +54,6 @@ RESULT_DIR = Path("/home/pkrause/software/mint-analysis/debug_out")
 A4_LANDSCAPE = (11.69, 8.27)
 
 
-# --------------------------
-# Logging Setup
-# --------------------------
-
-
-def setup_logging(
-    log_file: Path = RESULT_DIR / "analysis.log", level: int = logging.INFO
-) -> logging.Logger:
-    logger = logging.getLogger("PESpectrum")
-    logger.setLevel(level)
-    logger.propagate = False
-
-    if not logger.handlers:
-        fmt = logging.Formatter(
-            "[%(asctime)s] [%(name)s - %(funcName)s] [%(levelname)s] %(message)s"
-        )
-
-        sh = logging.StreamHandler()
-        sh.setLevel(level)
-        sh.setFormatter(fmt)
-        logger.addHandler(sh)
-
-        fh = logging.FileHandler(log_file, mode="w")
-        fh.setLevel(level)
-        fh.setFormatter(fmt)
-        logger.addHandler(fh)
-
-    return logger
-
-
-# --------------------------
-# Small helpers
-# --------------------------
 @dataclass(frozen=True)
 class Calibration:
     up_sampling_ratio: float
@@ -88,108 +62,11 @@ class Calibration:
     sampling_time: float
     renormalization_factor: float
 
+
 @dataclass
 class ChannelResult:
     status: str  # 'ok', 'skipped', 'error'
     data: dict[str, Any]
-
-def get_physics_object(obj, ureg):
-    """
-    Convert a given object recursevly 
-    to a object with all {val,(err),unit} occurences replaced with a pint (and ufloat) object
-    """
-    if isinstance(obj, dict) and {"val", "unit"}.issubset(obj):
-        val = obj["val"]
-        if "err" in obj:
-            err = obj["err"]
-            return ureg.Quantity(ufloat(val, err),ureg(obj["unit"]))
-        else:
-            return ureg.Quantity(val,ureg(obj["unit"]))
-
-    elif isinstance(obj, dict):
-        return {k: get_physics_object(v, ureg) for k, v in obj.items()}
-
-    elif isinstance(obj, (list, tuple)):
-        return type(obj)(get_physics_object(v, ureg) for v in obj)
-
-    else:
-        return obj
-
-def quantity_to_dict(obj):
-    """
-    Recursively replace a pint (and ufloat) object with a dict 
-    {val, (err), unit}
-    """
-    # The pint internal function is broken (see issue 2121)
-    preferred_units = ['Hz']
-    if hasattr(obj, "magnitude") and hasattr(obj, "units"):
-        if not preferred_units is None:
-            for u in preferred_units:
-                if obj.is_compatible_with(u):
-                    obj = obj.to(u)
-        mag = obj.magnitude
-    
-
-        if isinstance(mag, UFloat):
-            val = mag.n
-            err = mag.s
-        else:
-            val = mag
-            err = None
-
-        return {
-            "val": float(val),
-            **({ "err": float(err) } if err is not None else {}),
-            "unit": format(obj.units,"~")
-        }
-
-    elif isinstance(obj, dict):
-        return {k: quantity_to_dict(v) for k, v in obj.items()}
-
-    elif isinstance(obj, (list, tuple)):
-        return type(obj)(quantity_to_dict(v) for v in obj)
-
-    else:
-        return obj
-    
-def linear_func(x, a, b):
-    return a * x + b
-
-
-def gaussian(x: np.ndarray, amp: float, mu: float, sigma: float) -> np.ndarray:
-    return amp * np.exp(-0.5 * ((x - mu) / sigma) ** 2)
-
-
-def poisson_nll(amp: float, mu: float, sigma: float, x: np.ndarray, y: np.ndarray) -> float:
-    expected = gaussian(x, amp, mu, sigma)
-    expected = np.clip(expected, 1e-10, None)
-    return float(np.sum(expected - y * np.log(expected)))
-
-
-def valley_index_strict(y: np.ndarray) -> tuple[int, int] | None:
-    """Return (peak_idx, valley_idx) or None."""
-    n = len(y)
-    if n < 3:
-        return None
-
-    peak = None
-    for i in range(1, n - 1):
-        if y[i] > y[i - 1] and y[i] > y[i + 1]:
-            peak = i
-            break
-    if peak is None:
-        return None
-
-    valley = peak
-    i = peak + 1
-    while i < n:
-        if y[i] > y[i - 1]:
-            return peak, valley
-        if y[i] < y[valley]:
-            valley = i
-        i += 1
-
-    return None
 
 
 # --------------------------
@@ -204,7 +81,7 @@ class PESpectrumAnalyzer:
         lim: float = 20,
         override_results: bool = False,
         logger: logging.Logger | None = None,
-        calibrator: Calibration = Calibration(24/240,0.25e-3,75.,4.8e-9,1),
+        calibrator: Calibration | None = None,
         calib: str = "None",
     ) -> None:
         self.aux_yaml = aux_yaml
@@ -219,24 +96,22 @@ class PESpectrumAnalyzer:
         self.logger = logger or setup_logging()
         self.plot_folder.mkdir(parents=True, exist_ok=True)
         self.calibrator = calibrator
+        if calibrator is None:
+            self.calibrator = Calibration(24 / 240, 0.25e-3, 75.0, 4.8e-9, 1)
         self.calib = calib
         self.ureg = UnitRegistry()
         self.aux = self._load_aux()
 
         # unit handling
-        vadc = self.ureg.Quantity(calibrator.v_per_adc,self.ureg.volt)
-        usr = self.ureg.Quantity(calibrator.up_sampling_ratio, self.ureg.dimensionless)
-        rf = self.ureg.Quantity(calibrator.renormalization_factor, self.ureg.dimensionless)
-        st = self.ureg.Quantity(calibrator.sampling_time,self.ureg.seconds)
-        imp = self.ureg.Quantity(calibrator.adc_impedance,self.ureg.ohm)
+        vadc = self.ureg.Quantity(self.calibrator.v_per_adc, self.ureg.volt)
+        usr = self.ureg.Quantity(self.calibrator.up_sampling_ratio, self.ureg.dimensionless)
+        rf = self.ureg.Quantity(self.calibrator.renormalization_factor, self.ureg.dimensionless)
+        st = self.ureg.Quantity(self.calibrator.sampling_time, self.ureg.seconds)
+        imp = self.ureg.Quantity(self.calibrator.adc_impedance, self.ureg.ohm)
 
-        nnls_coloumb_factor = ((vadc*usr*st*rf)/imp)
+        nnls_coloumb_factor = (vadc * usr * st * rf) / imp
         self.ureg.define(f"NNLS = {nnls_coloumb_factor.to('coulomb').magnitude} * coulomb")
         self.ureg.define(f"ADC = {usr.magnitude}*NNLS")
-
-        
-
-      
 
     # ----------------------
     # I/O helpers
@@ -250,7 +125,7 @@ class PESpectrumAnalyzer:
         self.logger.info("Loaded aux YAML: %s", self.aux_yaml)
 
         # convert to physics units
-        aux = get_physics_object(aux,self.ureg)
+        aux = get_physics_object(aux, self.ureg)
 
         if self.keys is None:
             return aux
@@ -262,8 +137,8 @@ class PESpectrumAnalyzer:
                 msg = f"Key {k} not in aux file, skipping."
                 self.logger.warning(msg)
         return ret
-    
-    def _load_results(self) ->dict:
+
+    def _load_results(self) -> dict:
         if not self.result_yaml.exists():
             msg = f"Result YAML not found: {self.result_yaml}"
             raise FileNotFoundError(msg)
@@ -272,9 +147,8 @@ class PESpectrumAnalyzer:
         if "pe_spectrum" not in data:
             msg = "pe_spectrum info not present in result YAML; run analysis first."
             raise RuntimeError(msg)
-        
-        return get_physics_object(data,self.ureg)
 
+        return get_physics_object(data, self.ureg)
 
     def _save_results(self, results: dict[str, dict[int, dict[str, Any]]], key: str) -> None:
         if self.result_yaml.exists():
@@ -402,7 +276,7 @@ class PESpectrumAnalyzer:
 
         # total counts
         result["statistics"] = {
-            "total_cts":  self.ureg.Quantity(ufloat(np.sum(n),np.sum(n)**0.5), 'dimensionless'),
+            "total_cts": self.ureg.Quantity(ufloat(np.sum(n), np.sum(n) ** 0.5), "dimensionless"),
         }
 
         # runtime
@@ -493,9 +367,13 @@ class PESpectrumAnalyzer:
         fit_errs = {k: float(v) for k, v in m.errors.to_dict().items()}
 
         result["pe_peak_fit"] = {
-            "mean": self.ureg.Quantity(ufloat(fit_vals["mu"], fit_errs["mu"]),self.ureg.NNLS),
-            "sigma": self.ureg.Quantity(ufloat(fit_vals["sigma"], fit_errs["sigma"]),self.ureg.NNLS),
-            "amp": self.ureg.Quantity(ufloat(fit_vals["amp"], fit_errs["amp"]),self.ureg.dimensionless)
+            "mean": self.ureg.Quantity(ufloat(fit_vals["mu"], fit_errs["mu"]), self.ureg.NNLS),
+            "sigma": self.ureg.Quantity(
+                ufloat(fit_vals["sigma"], fit_errs["sigma"]), self.ureg.NNLS
+            ),
+            "amp": self.ureg.Quantity(
+                ufloat(fit_vals["amp"], fit_errs["amp"]), self.ureg.dimensionless
+            ),
         }
 
         # full fit curve over bins for plotting & integrals
@@ -507,19 +385,28 @@ class PESpectrumAnalyzer:
         # statistics
         try:
             result["statistics"] = {
-                "1st_pe_fit_integral_below_valley": self.ureg.Quantity(ufloat(np.sum(y_fit[:valley_idx]),
-                                                              np.sum(y_fit[:valley_idx])**0.5), 'dimensionless'),    
-                "cts_above_valley": self.ureg.Quantity(ufloat(np.sum(n[:valley_idx]),
-                                                              np.sum(n[:valley_idx])**0.5), 'dimensionless'),
-                "1st_pe_fit_integral": self.ureg.Quantity(ufloat(np.sum(y_fit), np.sum(y_fit)**0.5), 'dimensionless'),
-                "total_cts": self.ureg.Quantity(ufloat(np.sum(n), np.sum(n)**0.5), 'dimensionless'),
+                "1st_pe_fit_integral_below_valley": self.ureg.Quantity(
+                    ufloat(np.sum(y_fit[:valley_idx]), np.sum(y_fit[:valley_idx]) ** 0.5),
+                    "dimensionless",
+                ),
+                "cts_above_valley": self.ureg.Quantity(
+                    ufloat(np.sum(n[:valley_idx]), np.sum(n[:valley_idx]) ** 0.5), "dimensionless"
+                ),
+                "1st_pe_fit_integral": self.ureg.Quantity(
+                    ufloat(np.sum(y_fit), np.sum(y_fit) ** 0.5), "dimensionless"
+                ),
+                "total_cts": self.ureg.Quantity(
+                    ufloat(np.sum(n), np.sum(n) ** 0.5), "dimensionless"
+                ),
                 "valley": {
                     "pos": float(bin_centers[valley_idx]) * self.ureg.NNLS,
-                    "amp": self.ureg.Quantity(ufloat(n[valley_idx],n[valley_idx]**0.5), 'dimensionless')
+                    "amp": self.ureg.Quantity(
+                        ufloat(n[valley_idx], n[valley_idx] ** 0.5), "dimensionless"
+                    ),
                 },
                 "1st_pe_guess": {
-                    "pos": float(mu0) *self.ureg.NNLS,
-                    "amp": self.ureg.Quantity(ufloat(amp0,amp0**0.5), 'dimensionless'),
+                    "pos": float(mu0) * self.ureg.NNLS,
+                    "amp": self.ureg.Quantity(ufloat(amp0, amp0**0.5), "dimensionless"),
                 },
             }
         except Exception as e:
@@ -587,21 +474,23 @@ class PESpectrumAnalyzer:
         is_y : bool
             If True add a new y-axis. Else an x-axis.
         """
-        
+
         if self.calib == "gain":
             label = "Gain (a.u.)"
-            func = (lambda x: ((x*self.ureg.NNLS).to("C")/self.ureg.elementary_charge).m,
-                    lambda y: ((y*self.ureg.elementary_charge).to("NNLS")).m
+            func = (
+                lambda x: ((x * self.ureg.NNLS).to("C") / self.ureg.elementary_charge).m,
+                lambda y: ((y * self.ureg.elementary_charge).to("NNLS")).m,
             )
         else:
             if not self.ureg.NNLS.is_compatible_with(self.calib):
                 msg = f"Unit [{self.calib}] not compatible with charge"
                 self.logger.warning(msg)
             label = f"Charge ({self.calib})"
-            func = (lambda x: (x*self.ureg.NNLS).to(self.calib).m,
-                    lambda y: (y*self.ureg(self.calib)).to("NNLS").m
+            func = (
+                lambda x: (x * self.ureg.NNLS).to(self.calib).m,
+                lambda y: (y * self.ureg(self.calib)).to("NNLS").m,
             )
-                    
+
         if is_y:
             secax_y = ax.secondary_yaxis("right", functions=func)
             secax_y.set_ylabel(label)
@@ -609,7 +498,7 @@ class PESpectrumAnalyzer:
             secax_x = ax.secondary_xaxis("top", functions=func)
             secax_x.set_xlabel(label)
 
-    def _unit_converter(self, v,target_unit, constant = 1):
+    def _unit_converter(self, v, target_unit, constant=1):
         """
         Take a value v and if its a Quantity
         apply conversion of the targeted unit.
@@ -624,22 +513,25 @@ class PESpectrumAnalyzer:
         dims = dict(v._units)
         # Decompose units
         dims = dict(v._units)
-        target_units = {k: d for k, d in dims.items() if self.ureg(k).is_compatible_with(target_unit)}
-        other_units  = {k: d for k, d in dims.items() if not self.ureg(k).is_compatible_with(target_unit)}
+        target_units = {
+            k: d for k, d in dims.items() if self.ureg(k).is_compatible_with(target_unit)
+        }
+        other_units = {
+            k: d for k, d in dims.items() if not self.ureg(k).is_compatible_with(target_unit)
+        }
 
         # Start with dimensionless
         v_base = v / v.units
 
         # Multiply back non-target units
         for k, d in other_units.items():
-            v_base *= self.ureg(k)**d
+            v_base *= self.ureg(k) ** d
 
         # Convert target units to target unit
         for k, d in target_units.items():
-            v_base *= (self.ureg(k).to(target_unit))**d
+            v_base *= (self.ureg(k).to(target_unit)) ** d
 
         return v_base * constant
-
 
     # ----------------------
     # Signal to Noise Ratio (SNR)
@@ -653,27 +545,27 @@ class PESpectrumAnalyzer:
                 try:
                     if info.get("voltage") == 0 * self.ureg.V:
                         continue
-                    noise =info.get("statistics").get("valley").get("amp")
-          
+                    noise = info.get("statistics").get("valley").get("amp")
+
                     if info.get("status", "skipped") == "ok":
                         signal = info.get("pe_peak_fit").get("amp")
                     else:
-                        signal =info.get("statistics").get("1st_pe_guess").get("amp")
-                    run_snr[pmt] = 1- noise/signal
+                        signal = info.get("statistics").get("1st_pe_guess").get("amp")
+                    run_snr[pmt] = 1 - noise / signal
                 except Exception as e:
                     self.logger.warning(
                         "Failed to compute SNR for run %s PMT %s: %s", run_name, pmt, e
                     )
             snr[run_name] = run_snr
 
-        self._save_results(snr,"snr")
+        self._save_results(snr, "snr")
 
         fig, ax = plt.subplots(figsize=A4_LANDSCAPE)
         for run_name, pmt_dict in snr.items():
             pmts = sorted(pmt_dict.keys())
             vals = [pmt_dict[p].n for p in pmts]
             errs = [pmt_dict[p].s for p in pmts]
-            ax.errorbar(pmts, vals, errs, label=run_name, fmt='o')
+            ax.errorbar(pmts, vals, errs, label=run_name, fmt="o")
         ax.set_xlabel("PMT")
         ax.set_ylabel("SNR (a.u.)")
         ax.set_title("SNR per PMT (= 1 - valley/peak)")
@@ -694,7 +586,7 @@ class PESpectrumAnalyzer:
             run_dcr = {}
             for pmt, info in pmt_dict.items():
                 try:
-                    if info.get("voltage") == 0*self.ureg.volt:
+                    if info.get("voltage") == 0 * self.ureg.volt:
                         continue
                     stats = info.get("statistics", {})
                     runtime_info = info.get("runtime", {})
@@ -706,16 +598,18 @@ class PESpectrumAnalyzer:
                             time_mode,
                         )
                         continue
-                    dcts = stats.get("1st_pe_fit_integral_below_valley")+ stats.get("cts_above_valley")
+                    dcts = stats.get("1st_pe_fit_integral_below_valley") + stats.get(
+                        "cts_above_valley"
+                    )
                     runtime = runtime_info[time_mode]
-                    run_dcr[pmt] = dcts/runtime
-                    
+                    run_dcr[pmt] = dcts / runtime
+
                 except Exception as e:
                     self.logger.warning(
                         "Failed to compute DCR for run %s PMT %s: %s", run_name, pmt, e
                     )
             dcr[run_name] = run_dcr
-        self._save_results(dcr,"dcr")
+        self._save_results(dcr, "dcr")
 
         fig, ax = plt.subplots(figsize=A4_LANDSCAPE)
         for run_name, pmt_dict in dcr.items():
@@ -762,15 +656,16 @@ class PESpectrumAnalyzer:
                 xunit = pmt["voltage"][0].units
                 pmt["voltage"] = [i.to(xunit) for i in pmt["voltage"]]
                 yunit = pmt["vals"][0].units
-                pmt["vals"] =[i.to(yunit) for i in pmt["vals"]]
-                ax.errorbar([i.m for i in pmt["voltage"]], 
-                             [i.n for i in pmt["vals"]], 
-                             [i.s for i in pmt["vals"]],
-                             label=f"PMT {key}",
-                             fmt="o"
-                             )
-                ax.set_xlabel(f"Voltage ({format(xunit,"~")})")
-                ax.set_ylabel(f"Gain ({format(yunit,"~")})")
+                pmt["vals"] = [i.to(yunit) for i in pmt["vals"]]
+                ax.errorbar(
+                    [i.m for i in pmt["voltage"]],
+                    [i.n for i in pmt["vals"]],
+                    [i.s for i in pmt["vals"]],
+                    label=f"PMT {key}",
+                    fmt="o",
+                )
+                ax.set_xlabel(f"Voltage ({format(xunit,'~')})")
+                ax.set_ylabel(f"Gain ({format(yunit,'~')})")
 
                 if self.calib != "None":
                     self._add_charge_axis(ax, True)
@@ -778,7 +673,7 @@ class PESpectrumAnalyzer:
                 params, covariance = curve_fit(
                     linear_func,
                     [i.m for i in pmt["voltage"]],
-                    [i.n for i in pmt["vals"]], 
+                    [i.n for i in pmt["vals"]],
                     [i.s for i in pmt["vals"]],
                     absolute_sigma=True,
                 )
@@ -786,8 +681,8 @@ class PESpectrumAnalyzer:
                 perr = np.sqrt(np.diag(covariance))
                 x = np.linspace(-1 * b_opt / a_opt, max([i.m for i in pmt["voltage"]]) + 10, 1000)
                 ax.plot(x, linear_func(x, a_opt, b_opt), ls="--", color="red", label="Fit")
-                tmp_dic[key]["a"] = self.ureg.Quantity(ufloat(a_opt,perr[0]),yunit/xunit)
-                tmp_dic[key]["b"] = self.ureg.Quantity(ufloat(b_opt,perr[1]),yunit)
+                tmp_dic[key]["a"] = self.ureg.Quantity(ufloat(a_opt, perr[0]), yunit / xunit)
+                tmp_dic[key]["b"] = self.ureg.Quantity(ufloat(b_opt, perr[1]), yunit)
 
                 tmp_dic[key]["func"] = "G = a*voltage+b"
                 pmt.pop("voltage")
@@ -795,12 +690,12 @@ class PESpectrumAnalyzer:
                 ax.legend()
                 pdf.savefig(fig)
                 plt.close(fig)
-        
-        self._save_results(tmp_dic,"linear_gain")
+
+        self._save_results(tmp_dic, "linear_gain")
 
     def calibrate_nnls_values(self, output_file: str):
         """
-        Reads the current results.yaml, 
+        Reads the current results.yaml,
         finds all entries that contain a Charge compatible quantities
         Applies charge conversion as per self.calib
         writes out calibrated file to output_file.
@@ -809,23 +704,22 @@ class PESpectrumAnalyzer:
             msg = f"Unit [{self.calib}] not compatible with charge"
             self.logger.error(msg)
             return
-        
+
         data = self._load_results()
 
         def convert_charge_units(d):
             """Recursively convert all Quantities compatible with charge to new_unit."""
-            for k, v in d.items():
+            for _, v in d.items():
                 if isinstance(v, dict):
                     convert_charge_units(v)  # recurse
                 elif isinstance(v, self.ureg.Quantity):
                     if self.calib == "gain":
-                        self._unit_converter(v,'C',self.ureg.elementary_charge)
+                        self._unit_converter(v, "C", self.ureg.elementary_charge)
                     else:
-                        self._unit_converter(v,self.calib)
-                    
+                        self._unit_converter(v, self.calib)
 
         # Convert all charge-compatible quantities to nanocoulombs
-        convert_charge_units(data)        
+        convert_charge_units(data)
 
         try:
             with open(output_file, "w") as f:
@@ -898,7 +792,7 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    logger = setup_logging(level=logging.INFO)
+    logger = setup_logging(log_file=RESULT_DIR / "analysis.log", level=logging.INFO)
     try:
         analyzer = PESpectrumAnalyzer(
             logger=logger,
@@ -918,7 +812,9 @@ def main() -> None:
         if args.compute_snr:
             analyzer.compute_snr()
         if args.calibrate != "None":
-                analyzer.calibrate_nnls_values(output_file=str(analyzer.result_yaml).replace(".yaml", "_calibrated.yaml"))
+            analyzer.calibrate_nnls_values(
+                output_file=str(analyzer.result_yaml).replace(".yaml", "_calibrated.yaml")
+            )
 
         logger.info("Processing complete.")
     except Exception as e:
