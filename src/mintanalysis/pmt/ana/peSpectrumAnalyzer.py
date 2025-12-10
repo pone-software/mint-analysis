@@ -31,6 +31,10 @@ from lgdo import lh5
 from matplotlib.backends.backend_pdf import PdfPages
 from scipy.optimize import curve_fit
 
+from pint import UnitRegistry
+from uncertainties import ufloat, UFloat
+
+
 # --------------------------
 # TODO For Debugging only!
 # --------------------------
@@ -76,14 +80,78 @@ def setup_logging(
 # --------------------------
 # Small helpers
 # --------------------------
-
+@dataclass(frozen=True)
+class Calibration:
+    up_sampling_ratio: float
+    v_per_adc: float
+    adc_impedance: float
+    sampling_time: float
+    renormalization_factor: float
 
 @dataclass
 class ChannelResult:
     status: str  # 'ok', 'skipped', 'error'
     data: dict[str, Any]
 
+def get_physics_object(obj, ureg):
+    """
+    Convert a given object recursevly 
+    to a object with all {val,(err),unit} occurences replaced with a pint (and ufloat) object
+    """
+    if isinstance(obj, dict) and {"val", "unit"}.issubset(obj):
+        val = obj["val"]
+        if "err" in obj:
+            err = obj["err"]
+            return ureg.Quantity(ufloat(val, err),ureg(obj["unit"]))
+        else:
+            return ureg.Quantity(val,ureg(obj["unit"]))
 
+    elif isinstance(obj, dict):
+        return {k: get_physics_object(v, ureg) for k, v in obj.items()}
+
+    elif isinstance(obj, (list, tuple)):
+        return type(obj)(get_physics_object(v, ureg) for v in obj)
+
+    else:
+        return obj
+
+def quantity_to_dict(obj):
+    """
+    Recursively replace a pint (and ufloat) object with a dict 
+    {val, (err), unit}
+    """
+    # The pint internal function is broken (see issue 2121)
+    preferred_units = ['Hz']
+    if hasattr(obj, "magnitude") and hasattr(obj, "units"):
+        if not preferred_units is None:
+            for u in preferred_units:
+                if obj.is_compatible_with(u):
+                    obj = obj.to(u)
+        mag = obj.magnitude
+    
+
+        if isinstance(mag, UFloat):
+            val = mag.n
+            err = mag.s
+        else:
+            val = mag
+            err = None
+
+        return {
+            "val": float(val),
+            **({ "err": float(err) } if err is not None else {}),
+            "unit": format(obj.units,"~")
+        }
+
+    elif isinstance(obj, dict):
+        return {k: quantity_to_dict(v) for k, v in obj.items()}
+
+    elif isinstance(obj, (list, tuple)):
+        return type(obj)(quantity_to_dict(v) for v in obj)
+
+    else:
+        return obj
+    
 def linear_func(x, a, b):
     return a * x + b
 
@@ -136,10 +204,7 @@ class PESpectrumAnalyzer:
         lim: float = 20,
         override_results: bool = False,
         logger: logging.Logger | None = None,
-        up_sampling_ratio: float = 24 / 240,
-        v_per_adc: float = 0.25e-3,
-        adc_impedance: float = 75.0,
-        sampling_time: float = 4.8e-9,
+        calibrator: Calibration = Calibration(24/240,0.25e-3,75.,4.8e-9,1),
         calib: str = "None",
     ) -> None:
         self.aux_yaml = aux_yaml
@@ -152,13 +217,26 @@ class PESpectrumAnalyzer:
         self.lim = lim
         self.override_results = override_results
         self.logger = logger or setup_logging()
-        self.aux = self._load_aux()
         self.plot_folder.mkdir(parents=True, exist_ok=True)
-        self.up_sampling_ratio = up_sampling_ratio
-        self.v_per_adc = v_per_adc
-        self.adc_impedance = adc_impedance
-        self.sampling_time = sampling_time
+        self.calibrator = calibrator
         self.calib = calib
+        self.ureg = UnitRegistry()
+        self.aux = self._load_aux()
+
+        # unit handling
+        vadc = self.ureg.Quantity(calibrator.v_per_adc,self.ureg.volt)
+        usr = self.ureg.Quantity(calibrator.up_sampling_ratio, self.ureg.dimensionless)
+        rf = self.ureg.Quantity(calibrator.renormalization_factor, self.ureg.dimensionless)
+        st = self.ureg.Quantity(calibrator.sampling_time,self.ureg.seconds)
+        imp = self.ureg.Quantity(calibrator.adc_impedance,self.ureg.ohm)
+
+        nnls_coloumb_factor = ((vadc*usr*st*rf)/imp)
+        self.ureg.define(f"NNLS = {nnls_coloumb_factor.to('coulomb').magnitude} * coulomb")
+        self.ureg.define(f"ADC = {usr.magnitude}*NNLS")
+
+        
+
+      
 
     # ----------------------
     # I/O helpers
@@ -171,6 +249,9 @@ class PESpectrumAnalyzer:
             aux = yaml.safe_load(f)
         self.logger.info("Loaded aux YAML: %s", self.aux_yaml)
 
+        # convert to physics units
+        aux = get_physics_object(aux,self.ureg)
+
         if self.keys is None:
             return aux
         ret = {}
@@ -181,6 +262,19 @@ class PESpectrumAnalyzer:
                 msg = f"Key {k} not in aux file, skipping."
                 self.logger.warning(msg)
         return ret
+    
+    def _load_results(self) ->dict:
+        if not self.result_yaml.exists():
+            msg = f"Result YAML not found: {self.result_yaml}"
+            raise FileNotFoundError(msg)
+        with open(self.result_yaml) as f:
+            data = yaml.safe_load(f) or {}
+        if "pe_spectrum" not in data:
+            msg = "pe_spectrum info not present in result YAML; run analysis first."
+            raise RuntimeError(msg)
+        
+        return get_physics_object(data,self.ureg)
+
 
     def _save_results(self, results: dict[str, dict[int, dict[str, Any]]], key: str) -> None:
         if self.result_yaml.exists():
@@ -191,14 +285,14 @@ class PESpectrumAnalyzer:
                 self.logger.error(msg)
                 raise RuntimeError(msg)
 
-            existing[key] = results
+            existing[key] = quantity_to_dict(results)
             with open(self.result_yaml, "w") as f:
                 yaml.safe_dump(existing, f, default_flow_style=False)
             self.logger.info("Updated result YAML at %s", self.result_yaml)
 
         else:
             with open(self.result_yaml, "w") as f:
-                yaml.safe_dump({key: results}, f, default_flow_style=False)
+                yaml.safe_dump({key: quantity_to_dict(results)}, f, default_flow_style=False)
             self.logger.info("Wrote new result YAML at %s", self.result_yaml)
 
     # ----------------------
@@ -297,8 +391,8 @@ class PESpectrumAnalyzer:
             pe_vals,
             bins=self.bins,
             histtype="step",
-            label=f"channel {ch} (PMT {pmt}) at {result['voltage']['val']:.2f}"
-            f" {result['voltage']['unit']}",
+            label=f"channel {ch} (PMT {pmt}) at {result['voltage'].magnitude:.2f}"
+            f" {format(result['voltage'].units,'~')}",
         )
 
         if self.calib != "None":
@@ -308,7 +402,7 @@ class PESpectrumAnalyzer:
 
         # total counts
         result["statistics"] = {
-            "total_cts": {"val": int(np.sum(n)), "unit": ""},
+            "total_cts":  self.ureg.Quantity(ufloat(np.sum(n),np.sum(n)**0.5), 'dimensionless'),
         }
 
         # runtime
@@ -317,10 +411,10 @@ class PESpectrumAnalyzer:
             result["runtime"]["aux"] = meta["runtime"]
         raw_runtime = self._extract_runtime_if_present(f_raw, ch)
         if raw_runtime is not None:
-            result["runtime"]["raw"] = {"val": raw_runtime, "unit": "s"}
+            result["runtime"]["raw"] = raw_runtime * self.ureg.seconds
 
         # noise-only
-        if result["voltage"].get("val", 0) <= 10:
+        if result["voltage"] <= 10 * self.ureg.volt:
             self._decorate_axis(ax)
             # minimal result (no fit)
             msg = "Voltage a 0 --> Noise run"
@@ -399,9 +493,9 @@ class PESpectrumAnalyzer:
         fit_errs = {k: float(v) for k, v in m.errors.to_dict().items()}
 
         result["pe_peak_fit"] = {
-            "mean": {"val": fit_vals["mu"], "err": fit_errs["mu"], "unit": "NNLS"},
-            "sigma": {"val": fit_vals["sigma"], "err": fit_errs["sigma"], "unit": "NNLS"},
-            "amp": {"val": fit_vals["amp"], "err": fit_errs["amp"], "unit": ""},
+            "mean": self.ureg.Quantity(ufloat(fit_vals["mu"], fit_errs["mu"]),self.ureg.NNLS),
+            "sigma": self.ureg.Quantity(ufloat(fit_vals["sigma"], fit_errs["sigma"]),self.ureg.NNLS),
+            "amp": self.ureg.Quantity(ufloat(fit_vals["amp"], fit_errs["amp"]),self.ureg.dimensionless)
         }
 
         # full fit curve over bins for plotting & integrals
@@ -413,21 +507,19 @@ class PESpectrumAnalyzer:
         # statistics
         try:
             result["statistics"] = {
-                "1st_pe_fit_integral_below_valley": {
-                    "val": float(np.sum(y_fit[:valley_idx])),
-                    "unit": "",
-                },
-                "cts_above_valley": {"val": int(np.sum(n[:valley_idx])), "unit": ""},
-                "cts_below_valley": {"val": int(np.sum(n[valley_idx:])), "unit": ""},
-                "1st_pe_fit_integral": {"val": int(float(np.sum(y_fit))), "unit": ""},
-                "total_cts": {"val": int(np.sum(n)), "unit": ""},
+                "1st_pe_fit_integral_below_valley": self.ureg.Quantity(ufloat(np.sum(y_fit[:valley_idx]),
+                                                              np.sum(y_fit[:valley_idx])**0.5), 'dimensionless'),    
+                "cts_above_valley": self.ureg.Quantity(ufloat(np.sum(n[:valley_idx]),
+                                                              np.sum(n[:valley_idx])**0.5), 'dimensionless'),
+                "1st_pe_fit_integral": self.ureg.Quantity(ufloat(np.sum(y_fit), np.sum(y_fit)**0.5), 'dimensionless'),
+                "total_cts": self.ureg.Quantity(ufloat(np.sum(n), np.sum(n)**0.5), 'dimensionless'),
                 "valley": {
-                    "pos": {"val": float(bin_centers[valley_idx]), "unit": "NNLS"},
-                    "amp": {"val": int(n[valley_idx]), "unit": ""},
+                    "pos": float(bin_centers[valley_idx]) * self.ureg.NNLS,
+                    "amp": self.ureg.Quantity(ufloat(n[valley_idx],n[valley_idx]**0.5), 'dimensionless')
                 },
                 "1st_pe_guess": {
-                    "pos": {"val": float(mu0), "unit": "NNLS"},
-                    "amp": {"val": int(amp0), "unit": ""},
+                    "pos": float(mu0) *self.ureg.NNLS,
+                    "amp": self.ureg.Quantity(ufloat(amp0,amp0**0.5), 'dimensionless'),
                 },
             }
         except Exception as e:
@@ -447,8 +539,8 @@ class PESpectrumAnalyzer:
         ax.set_xlim(-10, 2.5e3)
         ax.set_ylim(0.5, None)
         ax.set_yscale("log")
-        ax.set_ylabel(f"Counts/{self.bin_size} NNLS units")
-        ax.set_xlabel("NNLS units")
+        ax.set_ylabel(f"Counts/{self.bin_size} NNLS")
+        ax.set_xlabel("Charge (NNLS)")
         ax.set_title(f"pygama-NNLS reconstruction ({self.lim} units solution cut-off)")
         ax.legend()
 
@@ -484,62 +576,32 @@ class PESpectrumAnalyzer:
 
     def _add_charge_axis(self, ax: plt.Axes, is_y) -> None:
         """
-        This function adds a axis in new units to a given axis plot.
+        This function adds a axis in new Charge units to a given axis plot.
+        if the unit is not charge convertible (or is gain) will log a warning
+        and fall gracefully.
 
         Parameters
         ----------
         ax : plt.Axes
-            The plot to which to add the pC axis.
+            The plot to which to add the new axis.
         is_y : bool
             If True add a new y-axis. Else an x-axis.
         """
-        if self.calib not in ["pC", "adc", "gain"]:
-            self.logger.warning("Invalid calibration unit, not calibrating.")
-            return
-
-        label = "Charge "
-        if self.calib == "pC":
-            func = (
-                lambda x: x
-                * (
-                    (self.v_per_adc * self.up_sampling_ratio * self.sampling_time)
-                    / self.adc_impedance
-                )
-                * 1e12,
-                lambda y: y
-                / (
-                    (
-                        (self.v_per_adc * self.up_sampling_ratio * self.sampling_time)
-                        / self.adc_impedance
-                    )
-                    * 1e12
-                ),
-            )
-            label += "(pC)"
-
-        elif self.calib == "gain":
+        
+        if self.calib == "gain":
             label = "Gain (a.u.)"
-            elem = 1.602e-19  # C (elementary charge)
-            func = (
-                lambda x: x
-                * (
-                    (self.v_per_adc * self.up_sampling_ratio * self.sampling_time)
-                    / self.adc_impedance
-                )
-                / elem,
-                lambda y: y
-                / (
-                    (
-                        (self.v_per_adc * self.up_sampling_ratio * self.sampling_time)
-                        / self.adc_impedance
-                    )
-                    / elem
-                ),
+            func = (lambda x: ((x*self.ureg.NNLS).to("C")/self.ureg.elementary_charge).m,
+                    lambda y: ((y*self.ureg.elementary_charge).to("NNLS")).m
             )
-
-        elif self.calib == "adc":
-            label += f"(ADC x {self.sampling_time*1e9:.1f} ns)"
-            func = (lambda x: x * self.up_sampling_ratio, lambda y: y / self.up_sampling_ratio)
+        else:
+            if not self.ureg.NNLS.is_compatible_with(self.calib):
+                msg = f"Unit [{self.calib}] not compatible with charge"
+                self.logger.warning(msg)
+            label = f"Charge ({self.calib})"
+            func = (lambda x: (x*self.ureg.NNLS).to(self.calib).m,
+                    lambda y: (y*self.ureg(self.calib)).to("NNLS").m
+            )
+                    
         if is_y:
             secax_y = ax.secondary_yaxis("right", functions=func)
             secax_y.set_ylabel(label)
@@ -547,65 +609,71 @@ class PESpectrumAnalyzer:
             secax_x = ax.secondary_xaxis("top", functions=func)
             secax_x.set_xlabel(label)
 
+    def _unit_converter(self, v,target_unit, constant = 1):
+        """
+        Take a value v and if its a Quantity
+        apply conversion of the targeted unit.
+        A constant can be multiplied.
+        E.g.:
+        target unit = pC
+        v = 2.5e-24 C**2/V*m
+        returns 2.5 pC**2/V/m
+        """
+        if not isinstance(v, self.ureg.Quantity):
+            return v
+        dims = dict(v._units)
+        # Decompose units
+        dims = dict(v._units)
+        target_units = {k: d for k, d in dims.items() if self.ureg(k).is_compatible_with(target_unit)}
+        other_units  = {k: d for k, d in dims.items() if not self.ureg(k).is_compatible_with(target_unit)}
+
+        # Start with dimensionless
+        v_base = v / v.units
+
+        # Multiply back non-target units
+        for k, d in other_units.items():
+            v_base *= self.ureg(k)**d
+
+        # Convert target units to target unit
+        for k, d in target_units.items():
+            v_base *= (self.ureg(k).to(target_unit))**d
+
+        return v_base * constant
+
+
     # ----------------------
     # Signal to Noise Ratio (SNR)
     # ----------------------
-    def plot_snr(self) -> None:
-        if not self.result_yaml.exists():
-            msg = f"Result YAML not found: {self.result_yaml}"
-            raise FileNotFoundError(msg)
-        with open(self.result_yaml) as f:
-            data = yaml.safe_load(f) or {}
-        if "pe_spectrum" not in data:
-            msg = "pe_spectrum info not present in result YAML; run analysis first."
-            raise RuntimeError(msg)
-
+    def compute_snr(self) -> None:
+        data = self._load_results()
         snr = {}
         for run_name, pmt_dict in data["pe_spectrum"].items():
             run_snr = {}
             for pmt, info in pmt_dict.items():
                 try:
-                    if info.get("voltage", {}).get("val", 0) == 0:
+                    if info.get("voltage") == 0 * self.ureg.V:
                         continue
-                    noise = {
-                        "val": info.get("statistics", {})
-                        .get("valley", {})
-                        .get("amp", {})
-                        .get("val", 0.0)
-                    }
-                    noise["err"] = noise["val"] ** 0.5
+                    noise =info.get("statistics").get("valley").get("amp")
+          
                     if info.get("status", "skipped") == "ok":
-                        signal = {
-                            "val": info.get("pe_peak_fit").get("amp", {}).get("val", 0.0),
-                            "err": info.get("pe_peak_fit").get("amp", {}).get("err", 0.0),
-                        }
+                        signal = info.get("pe_peak_fit").get("amp")
                     else:
-                        signal = {
-                            "val": info.get("statistics", {})
-                            .get("1st_pe_guess", {})
-                            .get("amp", {})
-                            .get("val", 0)
-                        }
-                        signal["err"] = signal["val"] ** 0.5
-                    run_snr[pmt] = {
-                        "val": 1 - noise["val"] / signal["val"],
-                        "err": (
-                            noise["err"] ** 2 / signal["val"] ** 2
-                            + (noise["val"] ** 2 * signal["err"] ** 2) / signal["val"] ** 4
-                        ),
-                        "unit": "",
-                    }
+                        signal =info.get("statistics").get("1st_pe_guess").get("amp")
+                    run_snr[pmt] = 1- noise/signal
                 except Exception as e:
                     self.logger.warning(
                         "Failed to compute SNR for run %s PMT %s: %s", run_name, pmt, e
                     )
             snr[run_name] = run_snr
 
+        self._save_results(snr,"snr")
+
         fig, ax = plt.subplots(figsize=A4_LANDSCAPE)
         for run_name, pmt_dict in snr.items():
             pmts = sorted(pmt_dict.keys())
-            vals = [pmt_dict[p]["val"] for p in pmts]
-            ax.plot(pmts, vals, marker="o", label=run_name)
+            vals = [pmt_dict[p].n for p in pmts]
+            errs = [pmt_dict[p].s for p in pmts]
+            ax.errorbar(pmts, vals, errs, label=run_name, fmt='o')
         ax.set_xlabel("PMT")
         ax.set_ylabel("SNR (a.u.)")
         ax.set_title("SNR per PMT (= 1 - valley/peak)")
@@ -620,23 +688,13 @@ class PESpectrumAnalyzer:
     # Dark Count Rate (DCR)
     # ----------------------
     def compute_dark_count_rate(self, time_mode: str = "aux") -> None:
-        if not self.result_yaml.exists():
-            msg = f"Result YAML not found: {self.result_yaml}"
-            raise FileNotFoundError(msg)
-        with open(self.result_yaml) as f:
-            data = yaml.safe_load(f) or {}
-        if "pe_spectrum" not in data:
-            msg = "pe_spectrum info not present in result YAML; run analysis first."
-            raise RuntimeError(msg)
-        if "dcr" in data and not self.override_results:
-            msg = "DCR already exists and override flag is False."
-            raise RuntimeError(msg)
+        data = self._load_results()
         dcr = {}
         for run_name, pmt_dict in data["pe_spectrum"].items():
             run_dcr = {}
             for pmt, info in pmt_dict.items():
                 try:
-                    if info.get("voltage", {}).get("val", 0) == 0:
+                    if info.get("voltage") == 0*self.ureg.volt:
                         continue
                     stats = info.get("statistics", {})
                     runtime_info = info.get("runtime", {})
@@ -648,30 +706,23 @@ class PESpectrumAnalyzer:
                             time_mode,
                         )
                         continue
-                    dcts = stats.get("1st_pe_fit_integral_below_valley", {}).get(
-                        "val", 0.0
-                    ) + stats.get("cts_above_valley", {}).get("val", 0)
-                    runtime = runtime_info[time_mode].get("val", 0)
-                    run_dcr[pmt] = {
-                        "val": float(dcts) / float(runtime),
-                        "err": float(dcts**0.5) / float(runtime),
-                        "unit": "Hz",
-                    }
+                    dcts = stats.get("1st_pe_fit_integral_below_valley")+ stats.get("cts_above_valley")
+                    runtime = runtime_info[time_mode]
+                    run_dcr[pmt] = dcts/runtime
+                    
                 except Exception as e:
                     self.logger.warning(
                         "Failed to compute DCR for run %s PMT %s: %s", run_name, pmt, e
                     )
             dcr[run_name] = run_dcr
-        data["dcr"] = dcr
-        with open(self.result_yaml, "w") as f:
-            yaml.safe_dump(data, f, default_flow_style=False)
-        self.logger.info("Wrote DCR results to %s", self.result_yaml)
+        self._save_results(dcr,"dcr")
 
         fig, ax = plt.subplots(figsize=A4_LANDSCAPE)
         for run_name, pmt_dict in dcr.items():
             pmts = sorted(pmt_dict.keys())
-            vals = [pmt_dict[p]["val"] for p in pmts]
-            ax.plot(pmts, vals, marker="o", label=run_name)
+            vals = [pmt_dict[p].n for p in pmts]
+            errs = [pmt_dict[p].s for p in pmts]
+            ax.errorbar(pmts, vals, errs, label=run_name, fmt="o")
         ax.set_xlabel("PMT")
         ax.set_ylabel("DCR (Hz)")
         ax.set_title("Dark Count Rate per PMT")
@@ -686,39 +737,21 @@ class PESpectrumAnalyzer:
     # Linear Gain Fit computation
     # ----------------------
     def compute_linear_gain_fit(self) -> None:
-        if not self.result_yaml.exists():
-            msg = f"Result YAML not found: {self.result_yaml}"
-            raise FileNotFoundError(msg)
-        with open(self.result_yaml) as f:
-            data = yaml.safe_load(f) or {}
-        if "pe_spectrum" not in data:
-            msg = "pe_spectrum info not present in result YAML; run analysis first."
-            raise RuntimeError(msg)
-
+        data = self._load_results()
         tmp_dic = {"used_keys": []}
-        y_unit = None
-        x_unit = None
+
         for key, run in data["pe_spectrum"].items():
             tmp_dic["used_keys"].append(key)
             for pmt in run:
                 if pmt not in tmp_dic:
-                    tmp_dic[pmt] = {"voltage": [], "vals": [], "errs": []}
-                v = run[pmt]["voltage"]["val"]
-                xu = run[pmt]["voltage"]["unit"]
-                if x_unit is None:
-                    x_unit = xu
-                else:
-                    assert x_unit == xu
-                if v == 0:
+                    tmp_dic[pmt] = {"voltage": [], "vals": []}
+                v = run[pmt]["voltage"]
+
+                if v == 0 * self.ureg.volts:
                     continue
+
                 tmp_dic[pmt]["voltage"].append(v)
-                tmp_dic[pmt]["vals"].append(run[pmt]["pe_peak_fit"]["mean"]["val"])
-                tmp_dic[pmt]["errs"].append(run[pmt]["pe_peak_fit"]["mean"]["err"])
-                yu = run[pmt]["pe_peak_fit"]["mean"]["unit"]
-                if y_unit is None:
-                    y_unit = yu
-                else:
-                    assert y_unit == yu
+                tmp_dic[pmt]["vals"].append(run[pmt]["pe_peak_fit"]["mean"])
 
         pdf_path = self.plot_folder / "gain_plots.pdf"
         with PdfPages(pdf_path) as pdf:
@@ -726,104 +759,77 @@ class PESpectrumAnalyzer:
                 if key == "used_keys":
                     continue
                 fig, ax = plt.subplots(figsize=A4_LANDSCAPE)
-                ax.errorbar(pmt["voltage"], pmt["vals"], pmt["errs"], fmt="o", label=f"PMT {key}")
-                ax.set_xlabel(f"Voltage ({x_unit})")
-                ax.set_ylabel(f"PMT position ({y_unit})")
+                xunit = pmt["voltage"][0].units
+                pmt["voltage"] = [i.to(xunit) for i in pmt["voltage"]]
+                yunit = pmt["vals"][0].units
+                pmt["vals"] =[i.to(yunit) for i in pmt["vals"]]
+                ax.errorbar([i.m for i in pmt["voltage"]], 
+                             [i.n for i in pmt["vals"]], 
+                             [i.s for i in pmt["vals"]],
+                             label=f"PMT {key}",
+                             fmt="o"
+                             )
+                ax.set_xlabel(f"Voltage ({format(xunit,"~")})")
+                ax.set_ylabel(f"Gain ({format(yunit,"~")})")
 
                 if self.calib != "None":
                     self._add_charge_axis(ax, True)
 
                 params, covariance = curve_fit(
                     linear_func,
-                    pmt["voltage"],
-                    pmt["vals"],
-                    sigma=pmt["errs"],
+                    [i.m for i in pmt["voltage"]],
+                    [i.n for i in pmt["vals"]], 
+                    [i.s for i in pmt["vals"]],
                     absolute_sigma=True,
                 )
                 a_opt, b_opt = params
                 perr = np.sqrt(np.diag(covariance))
-                x = np.linspace(-1 * b_opt / a_opt, max(pmt["voltage"]) + 10, 1000)
+                x = np.linspace(-1 * b_opt / a_opt, max([i.m for i in pmt["voltage"]]) + 10, 1000)
                 ax.plot(x, linear_func(x, a_opt, b_opt), ls="--", color="red", label="Fit")
-                tmp_dic[key]["a"] = {
-                    "val": float(a_opt),
-                    "err": float(perr[0]),
-                    "unit": f"{y_unit}/{x_unit}",
-                }
-                tmp_dic[key]["b"] = {
-                    "val": float(b_opt),
-                    "err": float(perr[1]),
-                    "unit": f"{y_unit}/{x_unit}",
-                }
+                tmp_dic[key]["a"] = self.ureg.Quantity(ufloat(a_opt,perr[0]),yunit/xunit)
+                tmp_dic[key]["b"] = self.ureg.Quantity(ufloat(b_opt,perr[1]),yunit)
+
                 tmp_dic[key]["func"] = "G = a*voltage+b"
                 pmt.pop("voltage")
                 pmt.pop("vals")
-                pmt.pop("errs")
                 ax.legend()
                 pdf.savefig(fig)
                 plt.close(fig)
-        data["linear_gain"] = tmp_dic
-        with open(self.result_yaml, "w") as f:
-            yaml.safe_dump(data, f, default_flow_style=False)
-        self.logger.info("Linear gain fit results saved to %s", self.result_yaml)
+        
+        self._save_results(tmp_dic,"linear_gain")
 
-    def calibrate_nnls_values(self, calibration_func: Callable, output_file: str, new_unit: str):
+    def calibrate_nnls_values(self, output_file: str):
         """
-        Reads the current results.yaml, finds all entries that contain a dict with
-        keys {"val": <number>, "unit": "NNLS"}, applies calibration_func(val)
-        and writes a calibrated result file.
+        Reads the current results.yaml, 
+        finds all entries that contain a Charge compatible quantities
+        Applies charge conversion as per self.calib
+        writes out calibrated file to output_file.
         """
-        factor = calibration_func(1)
-        try:
-            with open(self.result_yaml) as f:
-                data = yaml.safe_load(f)
-        except Exception as e:
-            msg = f"Failed to load file: {e}"
+        if self.calib != "gain" and not self.ureg.NNLS.is_compatible_with(self.calib):
+            msg = f"Unit [{self.calib}] not compatible with charge"
             self.logger.error(msg)
-            raise
+            return
+        
+        data = self._load_results()
 
-        def classify(unit: str):
-            unit = str(unit)
-            if unit == "NNLS" or unit.startswith("NNLS/"):
-                return "nnls"
-            if "/NNLS" in unit:
-                return "per_nnls"
-            if "NNLS" in unit:
-                return "nnls"
-            return None
+        def convert_charge_units(d):
+            """Recursively convert all Quantities compatible with charge to new_unit."""
+            for k, v in d.items():
+                if isinstance(v, dict):
+                    convert_charge_units(v)  # recurse
+                elif isinstance(v, self.ureg.Quantity):
+                    if self.calib == "gain":
+                        self._unit_converter(v,'C',self.ureg.elementary_charge)
+                    else:
+                        self._unit_converter(v,self.calib)
+                    
 
-        def recurse(obj):
-            if isinstance(obj, dict):
-                if set(obj.keys()) >= {"val", "unit"}:
-                    kind = classify(obj.get("unit"))
-                    if kind == "nnls":
-                        try:
-                            obj["val"] = obj["val"] * factor
-                            if "err" in obj:
-                                obj["err"] = obj["err"] * factor
-                            obj["unit"] = obj["unit"].replace("NNLS", new_unit)
-                        except Exception as e:
-                            msg = f"NNLS calibration failed for value {obj}: {e}"
-                            self.logger.error(msg)
-                    elif kind == "per_nnls":
-                        try:
-                            obj["val"] = obj["val"] / factor
-                            if "err" in obj:
-                                obj["err"] = obj["err"] / factor
-                            obj["unit"] = obj["unit"].replace("NNLS", new_unit)
-                        except Exception as e:
-                            msg = f"per-NNLS calibration failed for value {obj}: {e}"
-                            self.logger.error(msg)
-                for _, v in obj.items():
-                    recurse(v)
-            elif isinstance(obj, list):
-                for item in obj:
-                    recurse(item)
-
-        recurse(data)
+        # Convert all charge-compatible quantities to nanocoulombs
+        convert_charge_units(data)        
 
         try:
             with open(output_file, "w") as f:
-                yaml.safe_dump(data, f, default_flow_style=False)
+                yaml.safe_dump(quantity_to_dict(data), f, default_flow_style=False)
         except Exception as e:
             msg = f"Failed to write calibrated file: {e}"
             self.logger.error(msg)
@@ -858,8 +864,7 @@ def main() -> None:
         "-c",
         "--calibrate",
         default="None",
-        choices=["pC", "adc", "gain", "None"],
-        help="Choose a charge calibration value (pC, adc, gain, or None)",
+        help="Choose a charge calibration unit",
     )
     parser.add_argument(
         "-b",
@@ -911,37 +916,9 @@ def main() -> None:
         if args.compute_gain:
             analyzer.compute_linear_gain_fit()
         if args.compute_snr:
-            analyzer.plot_snr()
+            analyzer.compute_snr()
         if args.calibrate != "None":
-            if args.calibrate == "pC":
-                analyzer.calibrate_nnls_values(
-                    lambda x: x
-                    * (
-                        (analyzer.v_per_adc * analyzer.up_sampling_ratio * analyzer.sampling_time)
-                        / analyzer.adc_impedance
-                    )
-                    * 1e12,
-                    str(analyzer.result_yaml).replace(".yaml", "_pC_calibrated.yaml"),
-                    "pC",
-                )
-            elif args.calibrate == "adc":
-                analyzer.calibrate_nnls_values(
-                    lambda x: x * analyzer.up_sampling_ratio,
-                    str(analyzer.result_yaml).replace(".yaml", "_adc_calibrated.yaml"),
-                    "ADC",
-                )
-            elif args.calibrate == "gain":
-                elem = 1.602e-19  # C (elementary charge)
-                analyzer.calibrate_nnls_values(
-                    lambda x: x
-                    * (
-                        (analyzer.v_per_adc * analyzer.up_sampling_ratio * analyzer.sampling_time)
-                        / analyzer.adc_impedance
-                    )
-                    / elem,
-                    str(analyzer.result_yaml).replace(".yaml", "_gain_calibrated.yaml"),
-                    "a.u.",
-                )
+                analyzer.calibrate_nnls_values(output_file=str(analyzer.result_yaml).replace(".yaml", "_calibrated.yaml"))
 
         logger.info("Processing complete.")
     except Exception as e:
