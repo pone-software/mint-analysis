@@ -93,6 +93,7 @@ docs = [
 [project.scripts]
 # Format: <cli_command_name> = "<module_path>:<function_name>"
 build_ana = "mintanalysis.pmt.ana.peSpectrumAnalyzer:main"
+upload_ana = "mintanalysis.pmt.ana.uploadToDB:main"
 
 #[[tool.uv.index]]
 # Optional name for the index.

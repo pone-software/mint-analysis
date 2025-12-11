@@ -1,15 +1,17 @@
-'''
+"""
 Helper functions for ana tier
-'''
+"""
+
 from __future__ import annotations
+
 import logging
-import numpy as np
 from pathlib import Path
+
+import numpy as np
 from uncertainties import UFloat, ufloat
 
-def setup_logging(
-    log_file: Path = "analysis.log", level: int = logging.INFO
-) -> logging.Logger:
+
+def setup_logging(log_file: Path = "analysis.log", level: int = logging.INFO) -> logging.Logger:
     logger = logging.getLogger("PESpectrum")
     logger.setLevel(level)
     logger.propagate = False
@@ -30,6 +32,7 @@ def setup_logging(
         logger.addHandler(fh)
 
     return logger
+
 
 def get_physics_object(obj, ureg):
     """
