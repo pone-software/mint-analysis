@@ -43,12 +43,6 @@ from .utils import (
 )
 
 # --------------------------
-# TODO For Debugging only!
-# --------------------------
-RAW_DIR = Path("/home/pkrause/noise_hunt/data/p-1-1-om-hs-31/ref-v0.0.0/generated/tier/raw/r020")
-RESULT_DIR = Path("/home/pkrause/software/mint-analysis/debug_out")
-
-# --------------------------
 # Constants
 # --------------------------
 A4_LANDSCAPE = (11.69, 8.27)
@@ -86,9 +80,9 @@ class PESpectrumAnalyzer:
     ) -> None:
         self.aux_yaml = aux_yaml
         self.keys = keys
-        self.raw_dir = RAW_DIR
-        self.plot_folder = RESULT_DIR / "plots"
-        self.result_yaml = RESULT_DIR / "results.yaml"
+
+        self.plot_folder = self.aux_yaml.parent / "../ana/plots"
+        self.result_yaml = self.aux_yaml.parent / "../ana/results.yaml"
         self.bin_size = bin_size
         self.bins = np.arange(-100, 10000, bin_size)
         self.lim = lim
@@ -189,8 +183,9 @@ class PESpectrumAnalyzer:
     # ----------------------
     def analyze_run(self, run_name: str, meta: dict[str, Any]) -> dict[int, dict[str, Any]]:
         # build file paths
-        fname = meta["daq"].split("/")[-1].replace("daq", "r020").replace("data", "lh5")
-        f_raw = self.raw_dir / fname
+        f_raw = self.aux_yaml.parent / Path(
+            meta["daq"].replace("daq", "raw").replace("data", "lh5")
+        )
         if not f_raw.exists():
             msg = f"Raw file for run {run_name} not found: {f_raw}"
             raise FileNotFoundError(msg)
@@ -792,7 +787,9 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    logger = setup_logging(log_file=RESULT_DIR / "analysis.log", level=logging.INFO)
+    logger = setup_logging(
+        log_file=Path(args.aux_file).parent / "../ana/analysis.log", level=logging.INFO
+    )
     try:
         analyzer = PESpectrumAnalyzer(
             logger=logger,
