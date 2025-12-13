@@ -305,16 +305,15 @@ class PESpectrumAnalyzer:
         noise_peak, valley_idx = vi
 
         # find first p.e. peak after noise_peak
-        sub = n[noise_peak:]
-        pe_vi = valley_index_strict(sub)
+        sub = n[valley_idx:]
+        pe_vi = np.argmax(sub)
         if pe_vi is None:
             msg = "1st-p.e. detection failed after noise peak."
             self.logger.warning("Run %s ch %s: %s", run_name, ch, msg)
             self._decorate_axis(ax)
             return fig, {"status": "skipped", "reason": msg}
 
-        pe_peak_rel, _ = pe_vi
-        pe_peak_idx = noise_peak + pe_peak_rel
+        pe_peak_idx = valley_idx + pe_vi
 
         # annotate choices
         ax.axvline(bin_centers[valley_idx], color="red", ls="--", label="valley")
@@ -393,6 +392,12 @@ class PESpectrumAnalyzer:
                 "total_cts": self.ureg.Quantity(
                     ufloat(np.sum(n), np.sum(n) ** 0.5), "dimensionless"
                 ),
+                "noise_peak": {
+                    "pos": float(bin_centers[noise_peak]) * self.ureg.NNLS,
+                    "amp": self.ureg.Quantity(
+                        ufloat(n[noise_peak], n[noise_peak] ** 0.5), "dimensionless"
+                    ),
+                },
                 "valley": {
                     "pos": float(bin_centers[valley_idx]) * self.ureg.NNLS,
                     "amp": self.ureg.Quantity(
