@@ -76,7 +76,7 @@ def build_dsp_cli():
     db_dic = replace_list_with_array(db_dic)
 
     keys = lh5.ls(args.f_raw)
-    if db_dic.keys()[0] not in keys:
+    if next(iter(db_dic.keys())) not in keys:
         db_dic = dict.fromkeys(keys, db_dic)
     build_dsp(
         raw_in=args.f_raw,
