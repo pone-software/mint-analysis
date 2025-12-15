@@ -107,6 +107,15 @@ class PESpectrumAnalyzer:
         self.ureg.define(f"NNLS = {nnls_coloumb_factor.to('coulomb').magnitude} * coulomb")
         self.ureg.define(f"ADC = {usr.magnitude}*NNLS")
 
+        cal_dict = {
+            "vadc": vadc,
+            "upsampling_ratio": usr,
+            "renormalization_factor": rf,
+            "sampling_time": st,
+            "adc_impedance": imp,
+        }
+        self._save_results(cal_dict, "calibration_constants")
+
     # ----------------------
     # I/O helpers
     # ----------------------

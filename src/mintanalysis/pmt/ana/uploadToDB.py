@@ -7,12 +7,14 @@ from __future__ import annotations
 
 import argparse
 import logging
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, List
 
 import yaml
+from andromeda.testing.devices.production_database import ProductionDatabase
 from pint import UnitRegistry
+from pint.errors import UndefinedUnitError
 
 from .utils import get_physics_object, quantity_to_dict, setup_logging
 
@@ -221,6 +223,9 @@ def main():
     parser.add_argument("-x", "--f_aux", help="Path to aux file", required=True)
     parser.add_argument("-a", "--f_ana", help="Path to ana file", required=True)
     parser.add_argument(
+        "-d", "--dry", action="store_true", help="Perform a dry run only (i.e do not upload to DB)"
+    )
+    parser.add_argument(
         "-c",
         "--ch_mask",
         type=auto_int,
@@ -250,13 +255,15 @@ def main():
     measurement = args.measurement
     reco = args.reco
     ch_mask = args.ch_mask
-    tags = args.key
+    tag = args.key
+    db_opts = {
+        "use_tunnel": True,
+        "ssh_keyring_service": "mongo-prod",
+        "mongo_keyring_service": "mongo-prod",
+        "logger": logger.info,
+    }
 
-    # TODO For debug only. By definition keys need to be identical in aux and result files
-    tag_aux = "2025_12_02_22_46_06"
-    if measurement == "linear_gain":
-        tag_aux = ["2025_12_02_22_46_06", "2025_12_02_22_46_58"]
-
+    # Build SFTP directory
     sftp_pmt_dir = "PMT"
     sftp_base_dir = Path("/mint/mint-data/")
     p = Path(aux_file)
@@ -268,14 +275,40 @@ def main():
         msg = f"'{sftp_pmt_dir}' not found in the aux path."
         logger.error(msg)
 
+    # Load measurement data
     try:
         with open(result_yaml) as f:
             data = yaml.safe_load(f)
-        data = get_physics_object(data, ureg)
     except Exception as e:
         msg = f"Failed to load file: {e}"
         logger.error(msg)
         raise
+
+    # 'calibration_constants' in aux file define NNLS
+    if "calibration_constants" in data:
+        calib_data = get_physics_object(data["calibration_constants"], ureg)
+        nnls_coloumb_factor = (
+            calib_data.get("vadc")
+            * calib_data.get("upsampling_ratio")
+            * calib_data.get("sampling_time")
+            * calib_data.get("renormalization_factor")
+        ) / calib_data.get("adc_impedance")
+        ureg.define(f"NNLS = {nnls_coloumb_factor.to('coulomb').magnitude} * coulomb")
+        ureg.define(f"ADC = {calib_data.get('upsampling_ratio').magnitude}*NNLS")
+
+    # if no calibration values passed, try to load data without NNLS parameters
+    # if NNLS is in the tagged measurement, raise error.
+    try:
+        data = get_physics_object(data, ureg)
+    except UndefinedUnitError as e:
+        if "NNLS" in str(e):
+            msg = "Unit NNLS not defined. Trying to load reduced data set"
+            logger.warning(msg)
+            data = {measurement: get_physics_object(data[measurement], ureg)}
+        else:
+            raise e
+
+    # Load aux file
     try:
         with open(aux_file) as f:
             aux = yaml.safe_load(f)
@@ -285,19 +318,38 @@ def main():
         logger.error(msg)
         raise
 
+    # check measurement sanity
     if measurement not in data:
         msg = f"{measurement} measurement not in result file"
         logger.error(msg)
         return
 
+    tags_aux = list(aux.keys())
     if measurement == "linear_gain":
-        if tags is not None:
+        if tag is not None:
             logger.warning(
                 "Tags are defined redundandly. Using tags defined in linear gain results"
             )
-        tags = data[measurement].get("used_keys")
-        if len(tags) < 3:
+        tag = data[measurement].get("used_keys")
+        if len(tag) < 3:
             logger.warning("Less than three measurements found. Linear fit result will be bogus")
+
+        if not set(tag).issubset(set(tags_aux)):
+            msg = f"Tag {tag} not found in the aux file"
+            logger.error(msg)
+            raise ValueError
+
+    else:
+        # Check key sanity
+        tags_data = list(data[measurement].keys())
+        if tag not in tags_aux:
+            msg = f"Tag {tag} not found in the aux file"
+            logger.error(msg)
+            raise ValueError
+        if tag not in tags_data:
+            msg = f"Tag {tag} not found in the result file"
+            logger.error(msg)
+            raise ValueError
 
     while ch_mask:
         ch = (ch_mask & -ch_mask).bit_length() - 1
@@ -307,31 +359,36 @@ def main():
         vals, errs, units, mapping, _keys = get_values(
             data[measurement][pmt_no]
             if measurement == "linear_gain"
-            else data[measurement][tags][pmt_no]
+            else data[measurement][tag][pmt_no]
         )
         logger.info("collected measurement results")
 
         # collect pmt info
-        pmt_info = get_pmt_info(pmt_no, aux, tag_aux)
+        pmt_info = get_pmt_info(pmt_no, aux, tag)
         logger.info("collected PMT info")
 
         # get environment info
-        env_info = get_env_info(aux, tag_aux)
+        env_info = get_env_info(aux, tag)
         logger.info("collected environment info")
 
         sw_info = SoftwareInfo(
-            framework="mint-xyz", pe_reconstruction=reco, sftp_path=sftp_dir, run_tags=tags
+            framework="mint-xyz", pe_reconstruction=reco, sftp_path=sftp_dir, run_tags=tag
         )
         logger.info("collected software info")
 
         # get used devices
-        pmt_devices = f"pmt_{pmt_no}"
+        # Get settings from DB
+        # TODO replace with module level logic
+        with ProductionDatabase(**db_opts) as db:
+            overview = db.get_hemisphere_overview(str(sftp_root_dir), "tum")
+            pmt_name = overview.get("pmt-unit").get(str(pmt_no)).get("uid")
+            hemisphere = str(sftp_root_dir)
 
         # Build measurement result
         res = MeasurementResult(
             measurement_type=measurement,
             measurement_location="MINT",
-            devices_used=pmt_devices,
+            devices_used=[pmt_name, hemisphere],
             result=vals,
             result_unc=errs,
             units=units,
@@ -342,7 +399,14 @@ def main():
         )
         logger.info("Build data object")
 
-        # TODO Upload to database
+        # Upload to database
+        if args.dry:
+            msg = f"The following dict would be uploaded to the DB: {asdict(res)}"
+            logger.info(msg)
+        else:
+            with ProductionDatabase(**db_opts) as db:
+                db.client["mint"]["Measurements_Pmt"].insert_one(asdict(res))
+            msg = f"Uploaded document {asdict(res)} to mint/Measurements_Pmt"
 
         ch_mask &= ch_mask - 1  # clear lowest set bit
 
