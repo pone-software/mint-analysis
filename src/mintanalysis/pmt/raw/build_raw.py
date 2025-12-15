@@ -240,6 +240,11 @@ def main():
 
     args = parser.parse_args()
 
+    # Create raw folders if not existing
+    dir = os.path.dirname(args.f_raw)
+    if dir:
+        os.makedirs(dir, exist_ok=True)
+
     logger = logging.getLogger("daq2raw")
     log_level = logging.INFO
     logger.setLevel(log_level)
