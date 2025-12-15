@@ -1,0 +1,7 @@
+[2025-12-10 16:29:52,739] [PESpectrum - main] [WARNING] Tags are defined redundandly. Using tags defined in linear gain results
+[2025-12-10 16:29:52,739] [PESpectrum - main] [WARNING] Less than three measurments found. Linear fit result will be bogous
+[2025-12-10 16:29:52,739] [PESpectrum - main] [INFO] collected measurement results
+[2025-12-10 16:29:52,739] [PESpectrum - main] [INFO] collected PMT info
+[2025-12-10 16:29:52,739] [PESpectrum - main] [INFO] collected environment info
+[2025-12-10 16:29:52,739] [PESpectrum - main] [INFO] collected software info
+[2025-12-10 16:29:52,739] [PESpectrum - main] [INFO] Build data object
