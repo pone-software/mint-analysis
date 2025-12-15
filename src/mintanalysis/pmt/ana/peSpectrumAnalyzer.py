@@ -792,9 +792,10 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    logger = setup_logging(
-        log_file=Path(args.aux_file).parent / "../ana/analysis.log", level=logging.INFO
-    )
+    f_log = Path(args.aux_file).parent / "../ana/analysis.log"
+    f_log.parent.mkdir(parents=True, exist_ok=True)
+
+    logger = setup_logging(log_file=f_log, level=logging.INFO)
     try:
         analyzer = PESpectrumAnalyzer(
             logger=logger,
