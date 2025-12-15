@@ -1,6 +1,7 @@
 import argparse
 import json
 import logging
+import os
 
 import numpy as np
 from dspeed import build_dsp
@@ -52,6 +53,11 @@ def build_dsp_cli():
     )
 
     args = parser.parse_args()
+
+    # Create raw folders if not existing
+    dir = os.path.dirname(args.f_dsp)
+    if dir:
+        os.makedirs(dir, exist_ok=True)
 
     logger = logging.getLogger("dspeed")
     log_level = logging.INFO

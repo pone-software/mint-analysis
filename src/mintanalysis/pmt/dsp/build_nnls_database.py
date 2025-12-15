@@ -133,6 +133,11 @@ def build_nnls_database_cli():
 
     args = parser.parse_args()
 
+    # Create raw folders if not existing
+    dir = os.path.dirname(args.f_db)
+    if dir:
+        os.makedirs(dir, exist_ok=True)
+
     if os.path.exists(args.f_db) and not args.overwrite:
         msg = "NNLS database already exists!"
         raise ValueError(msg)
