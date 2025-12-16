@@ -209,20 +209,20 @@ class PESpectrumAnalyzer:
         # collect figures and write once
         with PdfPages(pdf_path) as pdf:
             for ch in lh5.ls(f_dsp):
-                pmt = int(ch[2:]) + 1
-                self.logger.info("Run %s - channel %s (PMT %d)", run_name, ch, pmt)
+                ch_idx = int(ch[2:])
+                self.logger.info("Run %s - channel %s (PMT %d)", run_name, ch, ch_idx + 1)
                 try:
-                    fig, chan_data = self.process_channel(run_name, ch, pmt, meta, f_raw, f_dsp)
+                    fig, chan_data = self.process_channel(run_name, ch, meta, f_raw, f_dsp)
                     # fig may be None if plotting skipped
                     if fig is not None:
                         pdf.savefig(fig)
                         plt.close(fig)
-                    run_results[pmt] = chan_data
+                    run_results[ch_idx] = chan_data
                 except Exception as exc:
                     self.logger.exception(
                         "Channel-level error run=%s ch=%s: %s", run_name, ch, exc
                     )
-                    run_results[pmt] = {"status": "error", "reason": str(exc)}
+                    run_results[ch_idx] = {"status": "error", "reason": str(exc)}
 
         self.logger.info("Wrote PDF for run %s to %s", run_name, pdf_path)
         return run_results
@@ -234,7 +234,6 @@ class PESpectrumAnalyzer:
         self,
         run_name: str,
         ch: str,
-        pmt: int,
         meta: dict[str, Any],
         f_raw: Path,
         f_dsp: Path,
@@ -245,7 +244,7 @@ class PESpectrumAnalyzer:
         """
         result: dict[str, Any] = {}
         ch_idx = int(ch[2:])
-        result["voltage"] = meta[ch_idx + 1]["v10"]
+        result["voltage"] = meta[ch_idx]["v10"]
 
         # load data
         try:
@@ -269,7 +268,7 @@ class PESpectrumAnalyzer:
             pe_vals,
             bins=self.bins,
             histtype="step",
-            label=f"channel {ch} (PMT {pmt}) at {result['voltage'].magnitude:.2f}"
+            label=f"channel {ch} (PMT {ch_idx+1}) at {result['voltage'].magnitude:.2f}"
             f" {format(result['voltage'].units,'~')}",
         )
 
@@ -563,7 +562,7 @@ class PESpectrumAnalyzer:
                     run_snr[pmt] = 1 - noise / signal
                 except Exception as e:
                     self.logger.warning(
-                        "Failed to compute SNR for run %s PMT %s: %s", run_name, pmt, e
+                        "Failed to compute SNR for run %s channel %s: %s", run_name, pmt, e
                     )
             snr[run_name] = run_snr
 
@@ -575,9 +574,9 @@ class PESpectrumAnalyzer:
             vals = [pmt_dict[p].n for p in pmts]
             errs = [pmt_dict[p].s for p in pmts]
             ax.errorbar(pmts, vals, errs, label=run_name, fmt="o")
-        ax.set_xlabel("PMT")
+        ax.set_xlabel("Channel")
         ax.set_ylabel("SNR (a.u.)")
-        ax.set_title("SNR per PMT (= 1 - valley/peak)")
+        ax.set_title("SNR per Channel (= 1 - valley/peak)")
         ax.legend()
         plt.tight_layout()
         plot_path = self.plot_folder / "snr_plot.png"
@@ -601,7 +600,7 @@ class PESpectrumAnalyzer:
                     runtime_info = info.get("runtime", {})
                     if time_mode not in runtime_info:
                         self.logger.warning(
-                            "Run %s PMT %s: missing runtime '%s'; skipping DCR.",
+                            "Run %s channel %s: missing runtime '%s'; skipping DCR.",
                             run_name,
                             pmt,
                             time_mode,
@@ -615,7 +614,7 @@ class PESpectrumAnalyzer:
 
                 except Exception as e:
                     self.logger.warning(
-                        "Failed to compute DCR for run %s PMT %s: %s", run_name, pmt, e
+                        "Failed to compute DCR for run %s channel %s: %s", run_name, pmt, e
                     )
             dcr[run_name] = run_dcr
         self._save_results(dcr, "dcr")
@@ -626,9 +625,9 @@ class PESpectrumAnalyzer:
             vals = [pmt_dict[p].n for p in pmts]
             errs = [pmt_dict[p].s for p in pmts]
             ax.errorbar(pmts, vals, errs, label=run_name, fmt="o")
-        ax.set_xlabel("PMT")
+        ax.set_xlabel("Channel")
         ax.set_ylabel("DCR (Hz)")
-        ax.set_title("Dark Count Rate per PMT")
+        ax.set_title("Dark Count Rate per Channel")
         ax.legend()
         plt.tight_layout()
         plot_path = self.plot_folder / "dcr_plot.png"
@@ -670,7 +669,7 @@ class PESpectrumAnalyzer:
                     [i.m for i in pmt["voltage"]],
                     [i.n for i in pmt["vals"]],
                     [i.s for i in pmt["vals"]],
-                    label=f"PMT {key}",
+                    label=f"Channel {key}",
                     fmt="o",
                 )
                 ax.set_xlabel(f"Voltage ({format(xunit,'~')})")
