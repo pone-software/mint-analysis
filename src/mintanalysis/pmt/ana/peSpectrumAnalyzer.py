@@ -87,6 +87,7 @@ class PESpectrumAnalyzer:
         self.bins = np.arange(-100, 10000, bin_size)
         self.lim = lim
         self.override_results = override_results
+        self.hemispheres = {}
         self.logger = logger or setup_logging()
         self.plot_folder.mkdir(parents=True, exist_ok=True)
         self.calibrator = calibrator
@@ -116,6 +117,8 @@ class PESpectrumAnalyzer:
         }
         self._save_results(cal_dict, "calibration_constants")
 
+        self._save_results(self.hemispheres, "hemispheres")
+
     # ----------------------
     # I/O helpers
     # ----------------------
@@ -139,6 +142,7 @@ class PESpectrumAnalyzer:
             else:
                 msg = f"Key {k} not in aux file, skipping."
                 self.logger.warning(msg)
+        self.hemispheres = {"A": aux.get("hemisphere_a"), "B": aux.get("hemisphere_b")}
         return ret
 
     def _load_results(self) -> dict:
@@ -165,7 +169,8 @@ class PESpectrumAnalyzer:
             existing[key] = quantity_to_dict(results)
             with open(self.result_yaml, "w") as f:
                 yaml.safe_dump(existing, f, default_flow_style=False)
-            self.logger.info("Updated result YAML at %s", self.result_yaml)
+            msg = f"Updated {key} YAML at {self.result_yaml}"
+            self.logger.info(msg)
 
         else:
             with open(self.result_yaml, "w") as f:
