@@ -253,6 +253,19 @@ def main():
         "-r", "--reco", default="NNLS", help="Reconstruction algorithm used in DSP"
     )
 
+    parser.add_argument("--mongo_user", default="mint", help="Specify user for mongoDB login")
+    parser.add_argument(
+        "--mongo_keyring",
+        default=None,
+        help="Specify keyring for mongoDB login (will prompt password if None)",
+    )
+    parser.add_argument(
+        "--ssh_keyring",
+        default=None,
+        help="Specify keyring for ssh tunnel login  (will prompt password if None)",
+    )
+    parser.add_argument("--ssh_user", default="mint", help="Specify user for ssh tunnel login")
+
     args = parser.parse_args()
     result_yaml = args.f_ana
     aux_file = args.f_aux
@@ -261,10 +274,11 @@ def main():
     ch_mask = args.ch_mask
     tag = args.key
     db_opts = {
-        "mongo_user": "mint",
+        "mongo_user": args.mongo_user,
         "use_tunnel": True,
-        "ssh_keyring_service": "mongo-prod",
-        "mongo_keyring_service": "mongo-mint",
+        "ssh_keyring_service": args.ssh_keyring,
+        "ssh_user": args.ssh_user,
+        "mongo_keyring_service": args.mongo_keyring,
         "logger": logger.info,
     }
 
