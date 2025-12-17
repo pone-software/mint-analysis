@@ -1,25 +1,18 @@
 # mint-analysis
-Collection of scripts for MINT tests
+A framework to analysis p-one PMT data.
 
+The MINT analysis package processes data recorded by the Andromeda package (e.g., PMT or acoustic data) and applies advanced analysis routines that lie outside Andromeda’s scope.
+
+For PMT data, two analysis frameworks are planned:
+- Pygama – Modern, Python-based, fast-turnaround DSP toolkit for time-series data.
+Status: Implemented.
+- IceTray – The classical IceCube framework and future default for P-ONE data.
+Status: Not yet implemented.
+
+Detailed unboarding instructions can be found [on confluence](https://p-one.atlassian.net/wiki/spaces/PONE/pages/1797849089/MINT+Analysis+User+Onboarding).
 
 ## Installation
 
 Clone the repo
-
-To install packages I recommend using uv [https://docs.astral.sh/uv/], which
-is a fast modern python package handler that also handles virtual environments.
-
-You'll need to install this first which is shown here [https://docs.astral.sh/uv/getting-started/installation/].
-
-Once you have it installed go to the cloned repo and inside you should see a pyproject.toml file
-this contains all the info on the packages needed.
-
-To install the packages simply run `uv sync`and they should all install.
-
-Then to open a jupyter notebook: `uv run --with jupyter jupyter notebook`. (In fact you don't even need the `uv sync` and can
-simply do the run, uv will handle the rest). This will run a jupyter notebook instance inside the virtual environment.
-
-Some packages may cause issues such as h5py which may need to be installed separately via brew.
-
-All new instances you make are completely independent so can use different package/python versions as
-specified in the pyproject.toml file.
+cd into repo
+`pip install .`
