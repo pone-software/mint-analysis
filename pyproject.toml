@@ -54,6 +54,7 @@ requires-python = ">=3.10, <3.13"
 dynamic = ["version"]
 
 dependencies = [
+"awkward",
 "dbetto",
 "iminuit",
 "pymongo",
@@ -95,6 +96,19 @@ docs = [
 # Format: <cli_command_name> = "<module_path>:<function_name>"
 build_ana = "mintanalysis.pmt.ana.peSpectrumAnalyzer:main"
 upload_ana = "mintanalysis.pmt.ana.uploadToDB:main"
+build_dsp = "mintanalysis.pmt.dsp.build_dsp:build_dsp_cli"
+build_nnls_db = "mintanalysis.pmt.dsp.build_nnls_database:build_nnls_database_cli"
+
+build_raw = "mintanalysis.pmt.raw:main"
+
+#[[tool.uv.index]]
+# Optional name for the index.
+#name = "dspeed-pone"
+# Required URL for the index.
+#url = "github://pone-software/dspeed-pone"
+
+[tool.uv.workspace]
+exclude = ["sim_data", "data", "dspeed"]
 
 [tool.pytest.ini_options]
 minversion = "6.0"
