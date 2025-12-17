@@ -53,6 +53,7 @@ requires-python = ">=3.10, <3.13"
 dynamic = ["version"]
 
 dependencies = [
+"awkward",
 "dbetto",
 "iminuit",
 "pymongo",
@@ -92,6 +93,9 @@ docs = [
 
 [project.scripts]
 # Format: <cli_command_name> = "<module_path>:<function_name>"
+build_dsp = "mintanalysis.pmt.dsp.build_dsp:build_dsp_cli"
+build_nnls_db = "mintanalysis.pmt.dsp.build_nnls_database:build_nnls_database_cli"
+
 build_raw = "mintanalysis.pmt.raw:main"
 
 #[[tool.uv.index]]
