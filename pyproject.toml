@@ -1,9 +1,13 @@
 [build-system]
-requires = [
-    "setuptools>=61.2",
-    "setuptools_scm[toml]>=7"
-]
+requires = ["setuptools>=64", "setuptools_scm>=8"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools_scm]
+write_to = "src/mintanalysis/_version.py"
+# 'node-and-date' or 'node-and-timestamp' appends the short hash
+local_scheme = "node-and-date"
+# 'guess-next-dev' ensures versions like 1.0.1.dev1+gabc123
+version_scheme = "guess-next-dev"
 
 [tool.setuptools]
 include-package-data = true
@@ -19,9 +23,6 @@ py-modules = []
 [tool.setuptools.packages.find]
 where = ["src"]
 
-
-[tool.setuptools_scm]
-write_to = "src/mintanalysis/_version.py"
 
 [project.urls]
 Homepage = "https://github.com/pone-software/mint-analysis"

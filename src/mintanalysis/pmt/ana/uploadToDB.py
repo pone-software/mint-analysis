@@ -9,6 +9,7 @@ import argparse
 import logging
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any, List
 
@@ -18,15 +19,6 @@ from pint import UnitRegistry
 from pint.errors import UndefinedUnitError
 
 from .utils import get_physics_object, quantity_to_dict, setup_logging
-
-ROOT_DIR = Path("/home/pkrause/software/mint-analysis/debug_out")
-
-# binary channel mask to upload
-# 0x0001 is PMT 1 only
-# 0x0002 is PMT 2 only
-# 0x0003 is PMT 1,2
-# 0x0004 is PMT 3 only
-
 
 NumberOrList = float | List[float]
 StrOrList = str | List[str]
@@ -390,8 +382,17 @@ def main():
         env_info = get_env_info(aux, tag)
         logger.info("collected environment info")
 
+        # get software info
+        try:
+            framework = version("mint-analysis")
+        except PackageNotFoundError:
+            framework = "unknown"
+
         sw_info = SoftwareInfo(
-            framework="mint-xyz", pe_reconstruction=reco, sftp_path=sftp_dir, run_tags=tag
+            framework="mint_analyis_" + framework,
+            pe_reconstruction=reco,
+            sftp_path=sftp_dir,
+            run_tags=tag,
         )
         logger.info("collected software info")
 
