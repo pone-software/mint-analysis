@@ -96,6 +96,7 @@ docs = [
 build_dsp = "mintanalysis.pmt.dsp.build_dsp:build_dsp_cli"
 build_nnls_db = "mintanalysis.pmt.dsp.build_nnls_database:build_nnls_database_cli"
 
+build_raw = "mintanalysis.pmt.raw:main"
 
 #[[tool.uv.index]]
 # Optional name for the index.
