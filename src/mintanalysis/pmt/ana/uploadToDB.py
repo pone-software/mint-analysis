@@ -7,7 +7,8 @@ from __future__ import annotations
 
 import argparse
 import logging
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, List
 
@@ -69,6 +70,7 @@ class MeasurementResult:
     result: NumberOrList
     result_unc: NumberOrList
     units: StrOrList
+    insert_time: str = field(init=False)
 
     pmt_info: PMTInfo
     env_info: EnvironmentInfo
@@ -105,6 +107,8 @@ class MeasurementResult:
             if len(lengths) != 1:
                 msg = "result, result_unc, units, and mapping.parameters must all have same length"
                 raise ValueError(msg)
+
+        self.insert_time = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")
 
 
 def get_values(
@@ -257,9 +261,10 @@ def main():
     ch_mask = args.ch_mask
     tag = args.key
     db_opts = {
+        "mongo_user": "mint",
         "use_tunnel": True,
         "ssh_keyring_service": "mongo-prod",
-        "mongo_keyring_service": "mongo-prod",
+        "mongo_keyring_service": "mongo-mint",
         "logger": logger.info,
     }
 
@@ -381,14 +386,17 @@ def main():
         # TODO replace with module level logic
         with ProductionDatabase(**db_opts) as db:
             overview = db.get_hemisphere_overview(str(sftp_root_dir), "tum")
-            pmt_name = overview.get("pmt-unit").get(str(pmt_no)).get("uid")
-            hemisphere = str(sftp_root_dir)
+            pmt_obj = {
+                "device_type": "pmt-unit",
+                "uid": overview.get("pmt-unit").get(str(pmt_no)).get("uid"),
+                "_id": overview.get("pmt-unit").get(str(pmt_no)).get("_id"),
+            }
 
         # Build measurement result
         res = MeasurementResult(
             measurement_type=measurement,
             measurement_location="MINT",
-            devices_used=[pmt_name, hemisphere],
+            devices_used=pmt_obj,
             result=vals,
             result_unc=errs,
             units=units,
@@ -402,12 +410,12 @@ def main():
         # Upload to database
         if args.dry:
             msg = f"The following dict would be uploaded to the DB: {asdict(res)}"
-            logger.info(msg)
         else:
             with ProductionDatabase(**db_opts) as db:
                 db.client["mint"]["Measurements_Pmt"].insert_one(asdict(res))
             msg = f"Uploaded document {asdict(res)} to mint/Measurements_Pmt"
 
+        logger.info(msg)
         ch_mask &= ch_mask - 1  # clear lowest set bit
 
 
