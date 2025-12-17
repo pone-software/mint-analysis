@@ -1,0 +1,16 @@
+[2025-12-15 15:05:54,438] [PESpectrum - main] [INFO] collected measurement results
+[2025-12-15 15:05:54,438] [PESpectrum - main] [INFO] collected PMT info
+[2025-12-15 15:05:54,439] [PESpectrum - main] [INFO] collected environment info
+[2025-12-15 15:05:54,439] [PESpectrum - main] [INFO] collected software info
+[2025-12-15 15:05:58,512] [PESpectrum - _connect_tunnel] [INFO] [info] SSH tunnel established: 127.0.0.1:43307 -> 127.0.0.1:27017 via production.pacific-neutrino.org
+[2025-12-15 15:05:58,620] [PESpectrum - _connect_client] [INFO] [info] Connected to MongoDB at 127.0.0.1:43307 with user p-one
+[2025-12-15 15:05:58,753] [PESpectrum - main] [INFO] Build data object
+[2025-12-15 15:05:58,753] [PESpectrum - main] [INFO] The following dict would be uploaded to the DB: {'measurement_type': 'dcr', 'measurement_location': 'MINT', 'devices_used': ['p-1-1-pmt-unit-KM56674_275', 'p-1-1-om-hs-01'], 'result': 26463.90079865678, 'result_unc': 30.15089782382669, 'units': 'Hz', 'pmt_info': {'v10_in_volt': 85.09310150146484, 'di10_in_mA': 2.9245901107788086, 'frac': 0.877996027469635}, 'env_info': {'temperature_in_celsius': 29.11357307688087, 'pressure_in_hpa': 1011.6844068085361, 'humidity_in_percent': 23.183785204174583, 'measurement_duration_in_s': 29.110747814178467}, 'software_info': {'framework': 'mint-xyz', 'pe_reconstruction': 'NNLS', 'sftp_path': '/mint/mint-data/p-1-1-om-hs-01/PMT', 'run_tags': '2025_12_13_03_31_52'}, 'mapping': None}
+[2025-12-15 15:05:58,753] [PESpectrum - main] [INFO] collected measurement results
+[2025-12-15 15:05:58,754] [PESpectrum - main] [INFO] collected PMT info
+[2025-12-15 15:05:58,754] [PESpectrum - main] [INFO] collected environment info
+[2025-12-15 15:05:58,754] [PESpectrum - main] [INFO] collected software info
+[2025-12-15 15:05:59,167] [PESpectrum - _connect_tunnel] [INFO] [info] SSH tunnel established: 127.0.0.1:38145 -> 127.0.0.1:27017 via production.pacific-neutrino.org
+[2025-12-15 15:05:59,242] [PESpectrum - _connect_client] [INFO] [info] Connected to MongoDB at 127.0.0.1:38145 with user p-one
+[2025-12-15 15:05:59,379] [PESpectrum - main] [INFO] Build data object
+[2025-12-15 15:05:59,380] [PESpectrum - main] [INFO] The following dict would be uploaded to the DB: {'measurement_type': 'dcr', 'measurement_location': 'MINT', 'devices_used': ['p-1-1-pmt-unit-KM54356_23', 'p-1-1-om-hs-01'], 'result': 26326.463667634333, 'result_unc': 30.07250335177778, 'units': 'Hz', 'pmt_info': {'v10_in_volt': 87.58090209960938, 'di10_in_mA': 1.8282999992370605, 'frac': 0.8174149990081787}, 'env_info': {'temperature_in_celsius': 29.11357307688087, 'pressure_in_hpa': 1011.6844068085361, 'humidity_in_percent': 23.183785204174583, 'measurement_duration_in_s': 29.110747814178467}, 'software_info': {'framework': 'mint-xyz', 'pe_reconstruction': 'NNLS', 'sftp_path': '/mint/mint-data/p-1-1-om-hs-01/PMT', 'run_tags': '2025_12_13_03_31_52'}, 'mapping': None}

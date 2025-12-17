@@ -1,9 +1,13 @@
 [build-system]
-requires = [
-    "setuptools>=61.2",
-    "setuptools_scm[toml]>=7"
-]
+requires = ["setuptools>=64", "setuptools_scm>=8"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools_scm]
+write_to = "src/mintanalysis/_version.py"
+# 'node-and-date' or 'node-and-timestamp' appends the short hash
+local_scheme = "node-and-date"
+# 'guess-next-dev' ensures versions like 1.0.1.dev1+gabc123
+version_scheme = "guess-next-dev"
 
 [tool.setuptools]
 include-package-data = true
@@ -19,9 +23,6 @@ py-modules = []
 [tool.setuptools.packages.find]
 where = ["src"]
 
-
-[tool.setuptools_scm]
-write_to = "src/mintanalysis/_version.py"
 
 [project.urls]
 Homepage = "https://github.com/pone-software/mint-analysis"
@@ -53,22 +54,28 @@ requires-python = ">=3.10, <3.13"
 dynamic = ["version"]
 
 dependencies = [
+"awkward",
+"dbetto",
+"iminuit",
+"pymongo",
+"PyYAML",
+"pint",
+"sshtunnel",
 "pygama>=2.0.0",
 "legend-daq2lh5>=1.2.1",
 "legend-pydataobj>=1.7",
-"numpy==1.26.2",
+"numpy",
 "numba>0.52",
 "pandas",
 "matplotlib",
+"uncertainties",
 "scipy>=1.14",
 "jupyter",
 "ipython",
 "ipympl",
 "boost_histogram<1.5",
-#"dspeed==1.6.2",
+"dspeed==2.0.2",
 ]
-
-#"dspeed @ file:///${PROJECT_ROOT}/dspeed",
 
 [project.optional-dependencies]
 test = [
@@ -84,6 +91,15 @@ docs = [
   "sphinx_autodoc_typehints",
   "furo>=2023.08.17",
 ]
+
+[project.scripts]
+# Format: <cli_command_name> = "<module_path>:<function_name>"
+build_ana = "mintanalysis.pmt.ana.peSpectrumAnalyzer:main"
+upload_ana = "mintanalysis.pmt.ana.uploadToDB:main"
+build_dsp = "mintanalysis.pmt.dsp.build_dsp:build_dsp_cli"
+build_nnls_db = "mintanalysis.pmt.dsp.build_nnls_database:build_nnls_database_cli"
+
+build_raw = "mintanalysis.pmt.raw:main"
 
 #[[tool.uv.index]]
 # Optional name for the index.
