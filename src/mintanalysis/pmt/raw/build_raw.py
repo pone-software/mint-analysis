@@ -228,7 +228,12 @@ def build_raw(
 # CLI entry point
 def main():
     parser = argparse.ArgumentParser(description="Build raw tier from DAQ input.")
-    parser.add_argument("-r", "--f_raw", help="Path to raw file", required=True)
+    parser.add_argument(
+        "-r",
+        "--f_raw",
+        default=None,
+        help="Path to raw file (if omitted replaces all occurrences of daq in f_daq with raw)",
+    )
     parser.add_argument("-d", "--f_daq", help="Path to DAQ file", required=True)
     parser.add_argument("-t", "--tick_value", default=4.8, help="Tick value in ns")
     parser.add_argument("-s", "--shift", default=0, help="Shift of trigger position in samples")
@@ -240,8 +245,15 @@ def main():
 
     args = parser.parse_args()
 
+    daq_ext = args.f_daq.split(".")[-1]
+    f_raw = (
+        args.f_daq.replace("daq", "raw").replace(daq_ext, "lh5")
+        if args.f_raw is None
+        else args.f_raw
+    )
+
     # Create raw folders if not existing
-    dir = os.path.dirname(args.f_raw)
+    dir = os.path.dirname(f_raw)
     if dir:
         os.makedirs(dir, exist_ok=True)
 
@@ -255,36 +267,36 @@ def main():
     sh.setFormatter(fmt)
     logger.addHandler(sh)
 
-    log_file = args.f_raw.replace(args.f_raw.split(".")[-1], "log")
+    log_file = f_raw.replace(f_raw.split(".")[-1], "log")
     fh = logging.FileHandler(log_file, mode="w")
     fh.setLevel(log_level)
     fh.setFormatter(fmt)
     logger.addHandler(fh)
 
-    if os.path.exists(args.f_raw):
+    if os.path.exists(f_raw):
         if args.overwrite:
             try:
-                os.remove(args.f_raw)
-                msg = f"Deleting old file at {args.f_raw}"
+                os.remove(f_raw)
+                msg = f"Deleting old file at {f_raw}"
                 logger.info(msg)
             except PermissionError:
-                msg = f"Permission denide to delete {args.f_raw}"
+                msg = f"Permission denide to delete {f_raw}"
                 logger.error(msg)
             except Exception as e:
-                msg = f"An error occurred while deleting {args.f_raw}: {e}"
+                msg = f"An error occurred while deleting {f_raw}: {e}"
                 logger.error(msg)
         else:
-            msg = f"{args.f_raw} exist. Data will be appended. This could be unwanted!"
+            msg = f"{f_raw} exist. Data will be appended. This could be unwanted!"
             logger.warning(msg)
 
     else:
-        msg = f"{args.f_raw} does not exist. Creating new file"
+        msg = f"{f_raw} does not exist. Creating new file"
         logger.info(msg)
 
     try:
         build_raw(
             f_daq=args.f_daq,
-            f_raw=args.f_raw,
+            f_raw=f_raw,
             jagged=args.jagged,
             ticks_value_ns=args.tick_value,
             trigger_offset=args.shift,

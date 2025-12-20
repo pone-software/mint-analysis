@@ -46,6 +46,7 @@ from .utils import (
 # Constants
 # --------------------------
 A4_LANDSCAPE = (11.69, 8.27)
+CONSIDERED_OFF_VOLTAGE = 12  # volts
 
 
 @dataclass(frozen=True)
@@ -132,6 +133,7 @@ class PESpectrumAnalyzer:
 
         # convert to physics units
         aux = get_physics_object(aux, self.ureg)
+        self.hemispheres = {"A": aux.pop("hemisphere_a"), "B": aux.pop("hemisphere_b")}
 
         if self.keys is None:
             return aux
@@ -142,7 +144,7 @@ class PESpectrumAnalyzer:
             else:
                 msg = f"Key {k} not in aux file, skipping."
                 self.logger.warning(msg)
-        self.hemispheres = {"A": aux.get("hemisphere_a"), "B": aux.get("hemisphere_b")}
+
         return ret
 
     def _load_results(self) -> dict:
@@ -215,6 +217,15 @@ class PESpectrumAnalyzer:
         with PdfPages(pdf_path) as pdf:
             for ch in lh5.ls(f_dsp):
                 ch_idx = int(ch[2:])
+                if ch_idx not in meta:
+                    self.logger.warning(
+                        "Run %s: channel %s (PMT %d) not in aux file, but data exists. Skipping",
+                        run_name,
+                        ch,
+                        ch_idx + 1,
+                    )
+                    continue
+
                 self.logger.info("Run %s - channel %s (PMT %d)", run_name, ch, ch_idx + 1)
                 try:
                     fig, chan_data = self.process_channel(run_name, ch, meta, f_raw, f_dsp)
@@ -556,7 +567,11 @@ class PESpectrumAnalyzer:
             run_snr = {}
             for pmt, info in pmt_dict.items():
                 try:
-                    if info.get("voltage") == 0 * self.ureg.V:
+                    if info.get("voltage") < CONSIDERED_OFF_VOLTAGE * self.ureg.V:
+                        msg = (
+                            f"PMT {pmt} at {format(info.get('voltage'),'~.2f')} is considered off."
+                        )
+                        self.logger.warning(msg)
                         continue
                     noise = info.get("statistics").get("valley").get("amp")
 
@@ -599,7 +614,11 @@ class PESpectrumAnalyzer:
             run_dcr = {}
             for pmt, info in pmt_dict.items():
                 try:
-                    if info.get("voltage") == 0 * self.ureg.volt:
+                    if info.get("voltage") < CONSIDERED_OFF_VOLTAGE * self.ureg.volt:
+                        msg = (
+                            f"PMT {pmt} at {format(info.get('voltage'),'~.2f')} is considered off."
+                        )
+                        self.logger.warning(msg)
                         continue
                     stats = info.get("statistics", {})
                     runtime_info = info.get("runtime", {})
@@ -650,13 +669,13 @@ class PESpectrumAnalyzer:
         for key, run in data["pe_spectrum"].items():
             tmp_dic["used_keys"].append(key)
             for pmt in run:
+                v = run[pmt].get("voltage", 0.0 * self.ureg.volts)
+                if v < CONSIDERED_OFF_VOLTAGE * self.ureg.volts:
+                    msg = f"PMT {pmt} at {format(v,'~.2f')} is considered off."
+                    self.logger.warning(msg)
+                    continue
                 if pmt not in tmp_dic:
                     tmp_dic[pmt] = {"voltage": [], "vals": []}
-                v = run[pmt]["voltage"]
-
-                if v == 0 * self.ureg.volts:
-                    continue
-
                 tmp_dic[pmt]["voltage"].append(v)
                 tmp_dic[pmt]["vals"].append(run[pmt]["pe_peak_fit"]["mean"])
 
@@ -684,10 +703,10 @@ class PESpectrumAnalyzer:
                     self._add_charge_axis(ax, True)
 
                 params, covariance = curve_fit(
-                    linear_func,
-                    [i.m for i in pmt["voltage"]],
-                    [i.n for i in pmt["vals"]],
-                    [i.s for i in pmt["vals"]],
+                    f=linear_func,
+                    xdata=[i.m for i in pmt["voltage"]],
+                    ydata=[i.n for i in pmt["vals"]],
+                    sigma=[i.s for i in pmt["vals"]],
                     absolute_sigma=True,
                 )
                 a_opt, b_opt = params

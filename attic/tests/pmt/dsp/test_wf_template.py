@@ -1,7 +1,6 @@
 import numpy as np
 import pytest
 from lgdo.types import ArrayOfEqualSizedArrays, WaveformTable
-
 from mintanalysis.pmt.dsp.template_wf import build_template_waveform
 
 

@@ -38,6 +38,7 @@ def build_dsp_cli():
     parser.add_argument(
         "-d",
         "--f_dsp",
+        default=None,
         help="Path to raw file (if omitted replaces all occurrences of raw in f_raw with dsp)",
     )
     parser.add_argument("-c", "--f_config", help="Path to DSP config file")
@@ -53,9 +54,9 @@ def build_dsp_cli():
     )
 
     args = parser.parse_args()
-
+    f_dsp = args.f_raw.replace("raw", "dsp") if args.f_dsp is None else args.f_dsp
     # Create raw folders if not existing
-    dir = os.path.dirname(args.f_dsp)
+    dir = os.path.dirname(f_dsp)
     if dir:
         os.makedirs(dir, exist_ok=True)
 
@@ -69,7 +70,6 @@ def build_dsp_cli():
     sh.setFormatter(fmt)
     logger.addHandler(sh)
 
-    f_dsp = args.f_raw.replace("raw", "dsp") if args.f_dsp is None else args.f_dsp
     log_file = f_dsp.replace(f_dsp.split(".")[-1], "log")
     fh = logging.FileHandler(log_file, mode="w")
     fh.setLevel(log_level)
