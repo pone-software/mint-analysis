@@ -590,10 +590,16 @@ class PESpectrumAnalyzer:
 
         fig, ax = plt.subplots(figsize=A4_LANDSCAPE)
         for run_name, pmt_dict in snr.items():
+            temp = self.aux.get(run_name).get("pth_start", {}).get("temperature")
+            pmts = sorted(pmt_dict.keys())
             pmts = sorted(pmt_dict.keys())
             vals = [pmt_dict[p].n for p in pmts]
             errs = [pmt_dict[p].s for p in pmts]
-            ax.errorbar(pmts, vals, errs, label=run_name, fmt="o")
+            lbl = self.aux.get(run_name).get("description", None)
+            if lbl is None:
+                lbl = run_name
+            lbl += f" ({format(temp,'~.2f')})"
+            ax.errorbar(pmts, vals, errs, label=lbl, fmt="o")
         ax.set_xlabel("Channel")
         ax.set_ylabel("SNR (a.u.)")
         ax.set_title("SNR per Channel (= 1 - valley/peak)")
@@ -645,10 +651,15 @@ class PESpectrumAnalyzer:
 
         fig, ax = plt.subplots(figsize=A4_LANDSCAPE)
         for run_name, pmt_dict in dcr.items():
+            temp = self.aux.get(run_name).get("pth_start", {}).get("temperature")
             pmts = sorted(pmt_dict.keys())
             vals = [pmt_dict[p].n for p in pmts]
             errs = [pmt_dict[p].s for p in pmts]
-            ax.errorbar(pmts, vals, errs, label=run_name, fmt="o")
+            lbl = self.aux.get(run_name).get("description", None)
+            if lbl is None:
+                lbl = run_name
+            lbl += f" ({format(temp,'~.2f')})"
+            ax.errorbar(pmts, vals, errs, label=lbl, fmt="o")
         ax.set_xlabel("Channel")
         ax.set_ylabel("DCR (Hz)")
         ax.set_title("Dark Count Rate per Channel")
@@ -664,25 +675,33 @@ class PESpectrumAnalyzer:
     # ----------------------
     def compute_linear_gain_fit(self) -> None:
         data = self._load_results()
-        tmp_dic = {"used_keys": []}
-
+        tmp_dic = {"used_keys": [], "temperatures": []}
         for key, run in data["pe_spectrum"].items():
             tmp_dic["used_keys"].append(key)
+            tmp_dic["temperatures"].append(
+                self.aux.get(key).get("pth_start", {}).get("temperature")
+            )
+            pop_counter = 0
             for pmt in run:
                 v = run[pmt].get("voltage", 0.0 * self.ureg.volts)
                 if v < CONSIDERED_OFF_VOLTAGE * self.ureg.volts:
                     msg = f"PMT {pmt} at {format(v,'~.2f')} is considered off."
                     self.logger.warning(msg)
+                    pop_counter += 1
                     continue
                 if pmt not in tmp_dic:
                     tmp_dic[pmt] = {"voltage": [], "vals": []}
                 tmp_dic[pmt]["voltage"].append(v)
                 tmp_dic[pmt]["vals"].append(run[pmt]["pe_peak_fit"]["mean"])
+            if pop_counter == len(run):
+                tmp_dic["used_keys"].pop()
+                tmp_dic["temperatures"].pop()
 
         pdf_path = self.plot_folder / "gain_plots.pdf"
         with PdfPages(pdf_path) as pdf:
+            temp_str = ", ".join([format(t, "~.2f") for t in tmp_dic["temperatures"]])
             for key, pmt in tmp_dic.items():
-                if key == "used_keys":
+                if key in ["used_keys", "temperatures"]:
                     continue
                 fig, ax = plt.subplots(figsize=A4_LANDSCAPE)
                 xunit = pmt["voltage"][0].units
@@ -693,7 +712,7 @@ class PESpectrumAnalyzer:
                     [i.m for i in pmt["voltage"]],
                     [i.n for i in pmt["vals"]],
                     [i.s for i in pmt["vals"]],
-                    label=f"Channel {key}",
+                    label=f"Channel {key} ({temp_str})",
                     fmt="o",
                 )
                 ax.set_xlabel(f"Voltage ({format(xunit,'~')})")
