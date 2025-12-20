@@ -760,14 +760,15 @@ class PESpectrumAnalyzer:
 
         def convert_charge_units(d):
             """Recursively convert all Quantities compatible with charge to new_unit."""
-            for _, v in d.items():
+
+            for k, v in d.items():
                 if isinstance(v, dict):
                     convert_charge_units(v)  # recurse
                 elif isinstance(v, self.ureg.Quantity):
                     if self.calib == "gain":
-                        self._unit_converter(v, "C", self.ureg.elementary_charge)
+                        d[k] = self._unit_converter(v, "C", self.ureg.elementary_charge)
                     else:
-                        self._unit_converter(v, self.calib)
+                        d[k] = self._unit_converter(v, self.calib)
 
         # Convert all charge-compatible quantities to nanocoulombs
         convert_charge_units(data)

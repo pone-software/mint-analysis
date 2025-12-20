@@ -80,7 +80,9 @@ def quantity_to_dict(obj, val_key="val", err_key="err", unit_key="unit"):
             val_key: float(val),
             **({err_key: float(err)} if err is not None else {}),
             unit_key: (
-                str(obj.units) if obj.units.is_compatible_with("ohm") else format(obj.units, "~")
+                str(obj.units)
+                if obj.units.is_compatible_with("ohm") or obj.units.is_compatible_with("degC")
+                else format(obj.units, "~")
             ),
         }
 
