@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 
 import yaml
-from icecube import dataclasses, icetray, p1_dataclasses, dataio
+from icecube import dataclasses, icetray, p1_dataclasses
 from pint import UnitRegistry
 
 from mintanalysis.pmt.ana.utils import get_physics_object, setup_logging
@@ -188,7 +188,9 @@ def main():
     tray = icetray.I3Tray()
     tray.AddModule("I3Reader", "reader", filename=args.f_i3_in)
     tray.AddModule(
-        injectDetectorInfo, config=load_aux(Path(args.f_aux), key=key, ch_mask = args.channel_mask), scale=args.scale,
+        injectDetectorInfo,
+        config=load_aux(Path(args.f_aux), key=key, ch_mask=args.channel_mask),
+        scale=args.scale,
     )
     tray.AddModule("I3Writer", "writer", Filename=f_i3_out)
     tray.Execute()
