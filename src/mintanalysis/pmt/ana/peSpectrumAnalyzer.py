@@ -288,7 +288,7 @@ class PESpectrumAnalyzer:
         # histogram
         fig, ax = plt.subplots(figsize=A4_LANDSCAPE)
         n, bins = self._get_histo(ch, f_dsp)
-        n, bins, _ = ax.stairs(
+        ax.stairs(
             values=n,
             edges=bins,
             label=f"channel {ch} (PMT {ch_idx+1}) at {result['voltage'].magnitude:.2f}"
