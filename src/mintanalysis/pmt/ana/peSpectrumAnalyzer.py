@@ -243,24 +243,11 @@ class PESpectrumAnalyzer:
         self.logger.info("Wrote PDF for run %s to %s", run_name, pdf_path)
         return run_results
 
-    # ----------------------
-    # Per-channel processing
-    # ----------------------
-    def process_channel(
+    def _get_histo(
         self,
-        run_name: str,
         ch: str,
-        meta: dict[str, Any],
-        f_raw: Path,
         f_dsp: Path,
-    ) -> tuple[plt.Figure | None, dict[str, Any]]:
-        """Process channel. Returns (figure_or_None, channel_result_dict).
-
-        Non-critical failures return a result dict with status 'skipped'
-        """
-        result: dict[str, Any] = {}
-        ch_idx = int(ch[2:])
-        result["voltage"] = meta[ch_idx]["v10"]
+    ) -> tuple[np.NDArray[Any], np.NDArray[Any]]:
 
         # load data
         try:
@@ -277,13 +264,33 @@ class PESpectrumAnalyzer:
             msg = f"Failed to compute pe values for {ch}: {e}"
             self.logger.warning(msg)
             return None, {"status": "skipped", "reason": msg}
+        return np.histogram(pe_vals, bins=self.bins)
+
+    # ----------------------
+    # Per-channel processing
+    # ----------------------
+    def process_channel(
+        self,
+        run_name: str,
+        ch: str,
+        meta: dict[str, Any],
+        f_raw: Path,
+        f_dsp: Path,
+    ) -> tuple[plt.Figure | None, dict[str, Any]]:
+        """Process channel. Returns (figure_or_None, channel_result_dict).
+
+        Non-critical failures return a result dict with status 'skipped'
+        """
+        ch_idx = int(ch[2:])
+        result: dict[str, Any] = {}
+        result["voltage"] = meta[ch_idx]["v10"]
 
         # histogram
         fig, ax = plt.subplots(figsize=A4_LANDSCAPE)
-        n, bins, _ = ax.hist(
-            pe_vals,
-            bins=self.bins,
-            histtype="step",
+        n, bins = self._get_histo(ch, f_dsp)
+        n, bins, _ = ax.stairs(
+            values=n,
+            edges=bins,
             label=f"channel {ch} (PMT {ch_idx+1}) at {result['voltage'].magnitude:.2f}"
             f" {format(result['voltage'].units,'~')}",
         )
