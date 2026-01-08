@@ -228,7 +228,9 @@ class PESpectrumAnalyzer:
 
                 self.logger.info("Run %s - channel %s (PMT %d)", run_name, ch, ch_idx + 1)
                 try:
-                    fig, chan_data = self.process_channel(run_name, ch, meta, f_raw, f_dsp)
+                    n, bins = self._get_histo(ch, f_dsp)
+                    raw_runtime = self._extract_runtime_if_present(f_raw, ch)
+                    fig, chan_data = self.process_channel(run_name, ch, meta, n, bins, raw_runtime)
                     # fig may be None if plotting skipped
                     if fig is not None:
                         pdf.savefig(fig)
@@ -272,26 +274,25 @@ class PESpectrumAnalyzer:
     def process_channel(
         self,
         run_name: str,
-        ch: str,
+        ch_idx: int,
         meta: dict[str, Any],
-        f_raw: Path,
-        f_dsp: Path,
+        n: np.NDArray[int],
+        bins: np.NDArray[float],
+        raw_runtime: float | None = None,
     ) -> tuple[plt.Figure | None, dict[str, Any]]:
         """Process channel. Returns (figure_or_None, channel_result_dict).
 
         Non-critical failures return a result dict with status 'skipped'
         """
-        ch_idx = int(ch[2:])
         result: dict[str, Any] = {}
         result["voltage"] = meta[ch_idx]["v10"]
 
         # histogram
         fig, ax = plt.subplots(figsize=A4_LANDSCAPE)
-        n, bins = self._get_histo(ch, f_dsp)
         ax.stairs(
             values=n,
             edges=bins,
-            label=f"channel {ch} (PMT {ch_idx+1}) at {result['voltage'].magnitude:.2f}"
+            label=f"channel {ch_idx} (PMT {ch_idx+1}) at {result['voltage'].magnitude:.2f}"
             f" {format(result['voltage'].units,'~')}",
         )
 
@@ -309,7 +310,6 @@ class PESpectrumAnalyzer:
         result["runtime"] = {}
         if "runtime" in meta:
             result["runtime"]["aux"] = meta["runtime"]
-        raw_runtime = self._extract_runtime_if_present(f_raw, ch)
         if raw_runtime is not None:
             result["runtime"]["raw"] = raw_runtime * self.ureg.seconds
 
@@ -327,7 +327,7 @@ class PESpectrumAnalyzer:
         vi = valley_index_strict(n)
         if vi is None:
             msg = "Valley detection failed (no strict peak/valley)."
-            self.logger.warning("Run %s ch %s: %s", run_name, ch, msg)
+            self.logger.warning("Run %s ch %i: %s", run_name, ch_idx, msg)
             self._decorate_axis(ax)
             result["status"] = ("skipped",)
             result["reason"] = (msg,)
@@ -340,7 +340,7 @@ class PESpectrumAnalyzer:
         pe_vi = np.argmax(sub)
         if pe_vi is None:
             msg = "1st-p.e. detection failed after noise peak."
-            self.logger.warning("Run %s ch %s: %s", run_name, ch, msg)
+            self.logger.warning("Run %s ch %i: %s", run_name, ch_idx, msg)
             self._decorate_axis(ax)
             return fig, {"status": "skipped", "reason": msg}
 
@@ -359,13 +359,13 @@ class PESpectrumAnalyzer:
 
         if len(bin_centers_fit) < 3:
             msg = f"Insufficient bins for fitting (n_fit={len(bin_centers_fit)})."
-            self.logger.warning("Run %s ch %s: %s", run_name, ch, msg)
+            self.logger.warning("Run %s ch %i: %s", run_name, ch_idx, msg)
             self._decorate_axis(ax)
             return fig, {"status": "skipped", "reason": msg}
 
         amp0 = float(n[pe_peak_idx])
         mu0 = float(bin_centers[pe_peak_idx])
-        sigma0 = 100.0
+        sigma0 = mu0 - bins[valley_idx]
 
         try:
             m = Minuit(
@@ -377,14 +377,14 @@ class PESpectrumAnalyzer:
             m.errordef = Minuit.LIKELIHOOD
             m.migrad(iterate=10)
         except Exception as e:
-            msg = f"Minuit error for {ch}: {e}"
-            self.logger.warning("Run %s ch %s: %s", run_name, ch, msg)
+            msg = f"Minuit error for {ch_idx}: {e}"
+            self.logger.warning("Run %s ch %i: %s", run_name, ch_idx, msg)
             self._decorate_axis(ax)
             return fig, {"status": "skipped", "reason": msg}
 
         # Basic validity check
         if not getattr(m, "valid", True):
-            self.logger.warning("Minuit invalid result for run %s ch %s", run_name, ch)
+            self.logger.warning("Minuit invalid result for run %s ch %i", run_name, ch_idx)
             self._decorate_axis(ax)
             return fig, {"status": "skipped", "reason": "Minuit invalid"}
 
@@ -442,7 +442,7 @@ class PESpectrumAnalyzer:
             }
         except Exception as e:
             self.logger.warning(
-                "Statistics computation failed for run %s ch %s: %s", run_name, ch, e
+                "Statistics computation failed for run %s ch %i: %s", run_name, ch_idx, e
             )
             result.setdefault("statistics", {})
             result["statistics"]["error"] = str(e)
