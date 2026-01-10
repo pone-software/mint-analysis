@@ -82,15 +82,14 @@ class PESpectrumAnalyzer:
         self.aux_yaml = aux_yaml
         self.keys = keys
 
-        self.plot_folder = self.aux_yaml.parent / "../ana/plots"
-        self.result_yaml = self.aux_yaml.parent / "../ana/results.yaml"
+        self._set_up_paths()
         self.bin_size = bin_size
         self.bins = np.arange(-100, 10000, bin_size)
         self.lim = lim
         self.override_results = override_results
         self.hemispheres = {}
         self.logger = logger or setup_logging()
-        self.plot_folder.mkdir(parents=True, exist_ok=True)
+
         self.calibrator = calibrator
         if calibrator is None:
             self.calibrator = Calibration(24 / 240, 0.25e-3, 75.0, 4.8e-9, 1)
@@ -105,10 +104,6 @@ class PESpectrumAnalyzer:
         st = self.ureg.Quantity(self.calibrator.sampling_time, self.ureg.seconds)
         imp = self.ureg.Quantity(self.calibrator.adc_impedance, self.ureg.ohm)
 
-        nnls_coloumb_factor = (vadc * usr * st * rf) / imp
-        self.ureg.define(f"NNLS = {nnls_coloumb_factor.to('coulomb').magnitude} * coulomb")
-        self.ureg.define(f"ADC = {usr.magnitude}*NNLS")
-
         cal_dict = {
             "vadc": vadc,
             "upsampling_ratio": usr,
@@ -116,9 +111,20 @@ class PESpectrumAnalyzer:
             "sampling_time": st,
             "adc_impedance": imp,
         }
-        self._save_results(cal_dict, "calibration_constants")
+
+        nnls_coloumb_factor = (vadc * usr * st * rf) / imp
+        self.ureg.define(f"NNLS = {nnls_coloumb_factor.to('coulomb').magnitude} * coulomb")
+        self.ureg.define(f"ADC = {usr.magnitude}*NNLS")
+
+        if self.calib != "None":
+            self._save_results(cal_dict, "calibration_constants")
 
         self._save_results(self.hemispheres, "hemispheres")
+
+    def _set_up_paths(self):
+        self.plot_folder = self.aux_yaml.parent / "../ana/plots"
+        self.result_yaml = self.aux_yaml.parent / "../ana/results.yaml"
+        self.plot_folder.mkdir(parents=True, exist_ok=True)
 
     # ----------------------
     # I/O helpers
@@ -164,9 +170,9 @@ class PESpectrumAnalyzer:
             with open(self.result_yaml) as f:
                 existing = yaml.safe_load(f) or {}
             if key in existing and not self.override_results:
-                msg = key + " results already present and override flag is False."
+                msg = key + " results already present and override flag is False. Not saving"
                 self.logger.error(msg)
-                raise RuntimeError(msg)
+                return
 
             existing[key] = quantity_to_dict(results)
             with open(self.result_yaml, "w") as f:
