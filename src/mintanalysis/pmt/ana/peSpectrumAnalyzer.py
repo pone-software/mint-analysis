@@ -689,6 +689,15 @@ class PESpectrumAnalyzer:
     def compute_linear_gain_fit(self) -> None:
         data = self._load_results()
         tmp_dic = {"used_keys": [], "temperatures": []}
+
+        if len(data["pe_spectrum"]) < 2:
+            msg = f"Only found {len(data['pe_spectrum'])} datapoints <2 in {self.result_yaml}"
+            self.logger.error(msg)
+            return
+        if len(data["pe_spectrum"]) < 3:
+            msg = f"Only found 2 datapoints in {self.result_yaml}. Fit will have no uncertainties."
+            self.logger.warning(msg)
+
         for key, run in data["pe_spectrum"].items():
             tmp_dic["used_keys"].append(key)
             tmp_dic["temperatures"].append(
