@@ -242,7 +242,7 @@ class PESpectrumAnalyzer:
                 try:
                     n, bins = self._get_histo(ch, f_dsp)
                     raw_runtime = self._extract_runtime_if_present(f_raw, ch)
-                    fig, chan_data = self.process_channel(run_name, ch, meta, n, bins, raw_runtime)
+                    fig, chan_data = self.process_channel(run_name, ch_idx, meta, n, bins, raw_runtime)
                     # fig may be None if plotting skipped
                     if fig is not None:
                         pdf.savefig(fig)
@@ -466,7 +466,7 @@ class PESpectrumAnalyzer:
     # Utilities
     # ----------------------
     def _decorate_axis(self, ax: plt.Axes) -> None:
-        ax.set_xlim(-10, 2.5e3)
+        ax.set_xlim(-10, self.bins[-1])
         ax.set_ylim(0.5, None)
         ax.set_yscale("log")
         ax.set_ylabel(f"Counts/{self.bin_size} NNLS")

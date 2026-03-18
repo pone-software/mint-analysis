@@ -247,7 +247,7 @@ def main():
 
     daq_ext = args.f_daq.split(".")[-1]
     f_raw = (
-        args.f_daq.replace("daq", "raw").replace(daq_ext, "lh5")
+        args.f_daq.replace("daq", "raw").replace("."+daq_ext, ".lh5")
         if args.f_raw is None
         else args.f_raw
     )

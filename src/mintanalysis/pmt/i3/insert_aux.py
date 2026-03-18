@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 
 import yaml
-from icecube import dataclasses, icetray, p1_dataclasses
+from icecube import dataclasses, icetray, p1_dataclasses, dataio
 from pint import UnitRegistry
 
 from mintanalysis.pmt.ana.utils import get_physics_object, setup_logging
@@ -34,7 +34,7 @@ class injectDetectorInfo(icetray.I3Module):
         frame = icetray.I3Frame(icetray.I3Frame.Geometry)
         if "channels" not in self.config:
             return
-        channels = [icetray.OMKey(0, 1, i) for i in self.config["channels"]]
+        channels = [icetray.OMKey(1, 1, i) for i in self.config["channels"]]
         for k, v in self.config.items():
             if isinstance(v, list):
                 map = dataclasses.I3MapKeyDouble()
@@ -79,7 +79,6 @@ def load_aux(aux_yaml: Path, key: str, ch_mask: int = 0xFFFF) -> dict:
 
     # convert to physics units
     aux = get_physics_object(aux, ureg)
-
     aux = aux[key]
 
     ret = {"channels": [], "channel_thresholds": [], "channel_means": [], "noise_levels": []}

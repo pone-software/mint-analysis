@@ -2,7 +2,7 @@ import argparse
 import logging
 import os
 
-from icecube import icetray, pone_unfolding
+from icecube import icetray, pone_unfolding, dataio
 
 from mintanalysis.pmt.ana.utils import setup_logging
 

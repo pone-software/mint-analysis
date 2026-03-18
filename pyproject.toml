@@ -101,6 +101,10 @@ build_nnls_db = "mintanalysis.pmt.dsp.build_nnls_database:build_nnls_database_cl
 
 build_raw = "mintanalysis.pmt.raw:main"
 
+build_i3_daq = "mintanalysis.pmt.i3.daq_to_q_frame:main"
+build_i3_aux = "mintanalysis.pmt.i3.insert_aux:main"
+build_i3_phy = "mintanalysis.pmt.i3.inject_p_frame:main"
+
 #[[tool.uv.index]]
 # Optional name for the index.
 #name = "dspeed-pone"
