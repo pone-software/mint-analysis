@@ -621,7 +621,7 @@ class PESpectrumAnalyzer:
                         signal = info.get("pe_peak_fit").get("amp")
                     else:
                         signal = info.get("statistics").get("1st_pe_guess").get("amp")
-                    run_snr[pmt] = 1 - noise / signal
+                    run_snr[pmt] = signal / noise
                 except Exception as e:
                     self.logger.warning(
                         "Failed to compute SNR for run %s channel %s: %s", run_name, pmt, e
@@ -644,7 +644,7 @@ class PESpectrumAnalyzer:
             ax.errorbar(pmts, vals, errs, label=lbl, fmt="o")
         ax.set_xlabel("Channel")
         ax.set_ylabel("SNR (a.u.)")
-        ax.set_title("SNR per Channel (= 1 - valley/peak)")
+        ax.set_title("SNR per Channel (= peak / valley)")
         ax.legend()
         plt.tight_layout()
         plot_path = self.plot_folder / "snr_plot.png"
