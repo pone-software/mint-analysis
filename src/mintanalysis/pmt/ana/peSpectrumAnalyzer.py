@@ -426,13 +426,30 @@ class PESpectrumAnalyzer:
 
         # statistics
         try:
+            border = 0.75*fit_vals["mu"]
+            closest_index = np.abs(bin_centers - border).argmin()
+
+            dcr_idx = np.abs(bin_centers-0.3*fit_vals["mu"]).argmin()
+            zero_idx = np.abs(bin_centers).argmin()
+
             result["statistics"] = {
                 "1st_pe_fit_integral_below_valley": self.ureg.Quantity(
-                    ufloat(np.sum(y_fit[:valley_idx]), np.sum(y_fit[:valley_idx]) ** 0.5),
+                    ufloat(np.sum(y_fit[zero_idx:valley_idx]), np.sum(y_fit[zero_idx:valley_idx]) ** 0.5),
+                    "dimensionless",
+                ),
+                "1st_pe_fit_integral_below_dcr_low_lim": self.ureg.Quantity(
+                    ufloat(np.sum(y_fit[zero_idx:dcr_idx]), np.sum(y_fit[zero_idx:dcr_idx]) ** 0.5),
+                    "dimensionless",
+                ),
+                "1st_pe_fit_integral_below_border": self.ureg.Quantity(
+                    ufloat(np.sum(y_fit[zero_idx:closest_index]), np.sum(y_fit[zero_idx:closest_index]) ** 0.5),
                     "dimensionless",
                 ),
                 "cts_above_valley": self.ureg.Quantity(
-                    ufloat(np.sum(n[:valley_idx]), np.sum(n[:valley_idx]) ** 0.5), "dimensionless"
+                    ufloat(np.sum(n[valley_idx:]), np.sum(n[valley_idx:]) ** 0.5), "dimensionless"
+                ),
+                "cts_above_border": self.ureg.Quantity(
+                    ufloat(np.sum(n[closest_index:]), np.sum(n[closest_index:]) ** 0.5), "dimensionless"
                 ),
                 "1st_pe_fit_integral": self.ureg.Quantity(
                     ufloat(np.sum(y_fit), np.sum(y_fit) ** 0.5), "dimensionless"
@@ -524,10 +541,11 @@ class PESpectrumAnalyzer:
         """
 
         if self.calib == "gain":
+            echarge = 1.60217663E-19
             label = "Gain (a.u.)"
             func = (
-                lambda x: ((x * self.ureg.NNLS).to("C") / self.ureg.elementary_charge).m,
-                lambda y: ((y * self.ureg.elementary_charge).to("NNLS")).m,
+                lambda x: ((x * self.ureg.NNLS).to("elementary_charge").m),
+                lambda y: (y * self.ureg.elementary_charge).to("NNLS").m,
             )
         else:
             if not self.ureg.NNLS.is_compatible_with(self.calib):
@@ -660,9 +678,7 @@ class PESpectrumAnalyzer:
                             time_mode,
                         )
                         continue
-                    dcts = stats.get("1st_pe_fit_integral_below_valley") + stats.get(
-                        "cts_above_valley"
-                    )
+                    dcts = stats.get("1st_pe_fit_integral_below_border") + stats.get("cts_above_border") - stats.get("1st_pe_fit_integral_below_dcr_low_lim")
                     runtime = runtime_info[time_mode]
                     run_dcr[pmt] = dcts / runtime
 
@@ -799,7 +815,7 @@ class PESpectrumAnalyzer:
                     convert_charge_units(v)  # recurse
                 elif isinstance(v, self.ureg.Quantity):
                     if self.calib == "gain":
-                        d[k] = self._unit_converter(v, "C", self.ureg.elementary_charge)
+                        d[k] = self._unit_converter(v, self.ureg.elementary_charge)#, 1./(1.60217663E-19*self.ureg("C")) )
                     else:
                         d[k] = self._unit_converter(v, self.calib)
 
