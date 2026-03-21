@@ -2,7 +2,7 @@ import argparse
 import logging
 import os
 
-from icecube import icetray, pone_unfolding, dataio
+from icecube import icetray, pone_unfolding
 
 from mintanalysis.pmt.ana.utils import setup_logging
 
@@ -31,7 +31,9 @@ def main():
 
     daq_ext = args.f_daq.split(".")[-1]
     f_i3 = (
-        args.f_daq.replace("daq", "i3").replace(daq_ext, "i3") if args.f_i3 is None else args.f_i3
+        args.f_daq.replace("daq", "i3").replace("." + daq_ext, ".i3")
+        if args.f_i3 is None
+        else args.f_i3
     )
 
     # Create raw folders if not existing
@@ -39,7 +41,7 @@ def main():
     if dir:
         os.makedirs(dir, exist_ok=True)
 
-    f_log = f_i3.replace(f_i3.split(".")[-1], "log")
+    f_log = f_i3.replace("." + f_i3.split(".")[-1], ".log")
     logger = setup_logging(log_file=f_log, level=logging.INFO)
 
     # Check if I3 file exists and if overwrite flag is set

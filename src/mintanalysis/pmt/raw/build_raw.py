@@ -247,7 +247,7 @@ def main():
 
     daq_ext = args.f_daq.split(".")[-1]
     f_raw = (
-        args.f_daq.replace("daq", "raw").replace("."+daq_ext, ".lh5")
+        args.f_daq.replace("daq", "raw").replace("." + daq_ext, ".lh5")
         if args.f_raw is None
         else args.f_raw
     )
@@ -267,7 +267,7 @@ def main():
     sh.setFormatter(fmt)
     logger.addHandler(sh)
 
-    log_file = f_raw.replace(f_raw.split(".")[-1], "log")
+    log_file = f_raw.replace("." + f_raw.split(".")[-1], ".log")
     fh = logging.FileHandler(log_file, mode="w")
     fh.setLevel(log_level)
     fh.setFormatter(fmt)

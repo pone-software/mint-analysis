@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 
 import yaml
-from icecube import dataclasses, icetray, p1_dataclasses, dataio
+from icecube import dataclasses, icetray, p1_dataclasses
 from pint import UnitRegistry
 
 from mintanalysis.pmt.ana.utils import get_physics_object, setup_logging
@@ -34,7 +34,7 @@ class injectDetectorInfo(icetray.I3Module):
         frame = icetray.I3Frame(icetray.I3Frame.Geometry)
         if "channels" not in self.config:
             return
-        channels = [icetray.OMKey(1, 1, i) for i in self.config["channels"]]
+        channels = [icetray.OMKey(0, 1, i) for i in self.config["channels"]]
         for k, v in self.config.items():
             if isinstance(v, list):
                 map = dataclasses.I3MapKeyDouble()
@@ -174,7 +174,7 @@ def main():
     # we are looking for YYYY_MM_DD_HH_MM_SS
     key = args.key
     if key is None:
-        match = re.search(r"\d{4}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}", args.f_i3)
+        match = re.search(r"\d{4}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}", args.f_i3_in)
         if match is not None:
             key = match.group()
         else:

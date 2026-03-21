@@ -94,16 +94,16 @@ docs = [
 
 [project.scripts]
 # Format: <cli_command_name> = "<module_path>:<function_name>"
-build_ana = "mintanalysis.pmt.ana.peSpectrumAnalyzer:main"
-upload_ana = "mintanalysis.pmt.ana.uploadToDB:main"
-build_dsp = "mintanalysis.pmt.dsp.build_dsp:build_dsp_cli"
-build_nnls_db = "mintanalysis.pmt.dsp.build_nnls_database:build_nnls_database_cli"
+mint_build_ana = "mintanalysis.pmt.ana.anaCli:main"
+mint_upload_ana = "mintanalysis.pmt.ana.uploadToDB:main"
+mint_build_dsp = "mintanalysis.pmt.dsp.build_dsp:build_dsp_cli"
+mint_build_nnls_db = "mintanalysis.pmt.dsp.build_nnls_database:build_nnls_database_cli"
 
-build_raw = "mintanalysis.pmt.raw:main"
+mint_build_raw = "mintanalysis.pmt.raw:main"
 
-build_i3_daq = "mintanalysis.pmt.i3.daq_to_q_frame:main"
-build_i3_aux = "mintanalysis.pmt.i3.insert_aux:main"
-build_i3_phy = "mintanalysis.pmt.i3.inject_p_frame:main"
+mint_build_i3_daq = "mintanalysis.pmt.i3.daq_to_q_frame:main"
+mint_build_i3_aux = "mintanalysis.pmt.i3.insert_aux:main"
+mint_build_i3_phy = "mintanalysis.pmt.i3.inject_p_frame:main"
 
 #[[tool.uv.index]]
 # Optional name for the index.

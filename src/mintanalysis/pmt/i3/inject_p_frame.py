@@ -61,7 +61,7 @@ def main():
     )
     parser.add_argument("-a", "--append", action="store_true", help="Append existing i3 file")
     parser.add_argument(
-        "-u", "--upsample", type=int, default=100, help="Upsample factor (spe per bin)"
+        "-u", "--upsample", type=int, default=10, help="Upsample factor (spe per bin)"
     )
     parser.add_argument(
         "-t", "--tolerance", type=float, default=2, help="Chi^2 stopping tolerance"
@@ -84,7 +84,7 @@ def main():
             raise ValueError(msg)
 
     i3_split = args.f_i3_in.split(".")
-    f_i3_out = i3_split[0] + "_aux." + "".join(i3_split[1:]) if args.append else args.f_i3_out
+    f_i3_out = i3_split[0] + "_phy." + "".join(i3_split[1:]) if args.append else args.f_i3_out
     f_log = f_i3_out.split(".")[0] + ".log"
 
     logger = setup_logging(log_file=f_log, level=logging.INFO)

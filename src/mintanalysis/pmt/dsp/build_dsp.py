@@ -70,7 +70,7 @@ def build_dsp_cli():
     sh.setFormatter(fmt)
     logger.addHandler(sh)
 
-    log_file = f_dsp.replace(f_dsp.split(".")[-1], "log")
+    log_file = f_dsp.replace("." + f_dsp.split(".")[-1], ".log")
     fh = logging.FileHandler(log_file, mode="w")
     fh.setLevel(log_level)
     fh.setFormatter(fmt)
