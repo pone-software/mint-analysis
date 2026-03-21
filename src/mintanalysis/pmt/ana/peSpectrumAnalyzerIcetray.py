@@ -5,7 +5,7 @@ from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
-from icecube import dataclasses, icetray, p1_dataclasses
+from icecube import icetray
 from matplotlib.backends.backend_pdf import PdfPages
 
 from mintanalysis.pmt.ana.peSpectrumAnalyzer import PESpectrumAnalyzer
