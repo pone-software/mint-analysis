@@ -11,12 +11,16 @@ PESpectrumAnalyzer
 - linear gain fit
 - SNR plot
 
+IceTraySpectrumAnalyzer
+
+Child of PESpectrumAnalyzer to do analysis based on an icecube file
+Needs icetray installed
+
 Usage: Run via CLI with desired flags
 """
 
 from __future__ import annotations
 
-import argparse
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -72,6 +76,7 @@ class PESpectrumAnalyzer:
         self,
         aux_yaml: Path,
         keys: list | None = None,
+        ignore_keys: list | None = None,
         bin_size: int = 20,
         lim: float = 20,
         override_results: bool = False,
@@ -81,16 +86,15 @@ class PESpectrumAnalyzer:
     ) -> None:
         self.aux_yaml = aux_yaml
         self.keys = keys
-
-        self.plot_folder = self.aux_yaml.parent / "../ana/plots"
-        self.result_yaml = self.aux_yaml.parent / "../ana/results.yaml"
+        self.ignore_keys = ignore_keys
+        self._set_up_paths()
         self.bin_size = bin_size
         self.bins = np.arange(-100, 10000, bin_size)
         self.lim = lim
         self.override_results = override_results
         self.hemispheres = {}
         self.logger = logger or setup_logging()
-        self.plot_folder.mkdir(parents=True, exist_ok=True)
+
         self.calibrator = calibrator
         if calibrator is None:
             self.calibrator = Calibration(24 / 240, 0.25e-3, 75.0, 4.8e-9, 1)
@@ -105,10 +109,6 @@ class PESpectrumAnalyzer:
         st = self.ureg.Quantity(self.calibrator.sampling_time, self.ureg.seconds)
         imp = self.ureg.Quantity(self.calibrator.adc_impedance, self.ureg.ohm)
 
-        nnls_coloumb_factor = (vadc * usr * st * rf) / imp
-        self.ureg.define(f"NNLS = {nnls_coloumb_factor.to('coulomb').magnitude} * coulomb")
-        self.ureg.define(f"ADC = {usr.magnitude}*NNLS")
-
         cal_dict = {
             "vadc": vadc,
             "upsampling_ratio": usr,
@@ -116,9 +116,20 @@ class PESpectrumAnalyzer:
             "sampling_time": st,
             "adc_impedance": imp,
         }
-        self._save_results(cal_dict, "calibration_constants")
+
+        nnls_coloumb_factor = (vadc * usr * st * rf) / imp
+        self.ureg.define(f"NNLS = {nnls_coloumb_factor.to('coulomb').magnitude} * coulomb")
+        self.ureg.define(f"ADC = {usr.magnitude}*NNLS")
+
+        if self.calib != "None":
+            self._save_results(cal_dict, "calibration_constants")
 
         self._save_results(self.hemispheres, "hemispheres")
+
+    def _set_up_paths(self):
+        self.plot_folder = self.aux_yaml.parent / "../ana/plots"
+        self.result_yaml = self.aux_yaml.parent / "../ana/results.yaml"
+        self.plot_folder.mkdir(parents=True, exist_ok=True)
 
     # ----------------------
     # I/O helpers
@@ -145,6 +156,10 @@ class PESpectrumAnalyzer:
                 msg = f"Key {k} not in aux file, skipping."
                 self.logger.warning(msg)
 
+        for k in ret:
+            if k in self.ignore_keys():
+                del ret[k]
+
         return ret
 
     def _load_results(self) -> dict:
@@ -164,9 +179,9 @@ class PESpectrumAnalyzer:
             with open(self.result_yaml) as f:
                 existing = yaml.safe_load(f) or {}
             if key in existing and not self.override_results:
-                msg = key + " results already present and override flag is False."
+                msg = key + " results already present and override flag is False. Not saving"
                 self.logger.error(msg)
-                raise RuntimeError(msg)
+                return
 
             existing[key] = quantity_to_dict(results)
             with open(self.result_yaml, "w") as f:
@@ -228,7 +243,11 @@ class PESpectrumAnalyzer:
 
                 self.logger.info("Run %s - channel %s (PMT %d)", run_name, ch, ch_idx + 1)
                 try:
-                    fig, chan_data = self.process_channel(run_name, ch, meta, f_raw, f_dsp)
+                    n, bins = self._get_histo(ch, f_dsp)
+                    raw_runtime = self._extract_runtime_if_present(f_raw, ch)
+                    fig, chan_data = self.process_channel(
+                        run_name, ch_idx, meta, n, bins, raw_runtime
+                    )
                     # fig may be None if plotting skipped
                     if fig is not None:
                         pdf.savefig(fig)
@@ -243,24 +262,11 @@ class PESpectrumAnalyzer:
         self.logger.info("Wrote PDF for run %s to %s", run_name, pdf_path)
         return run_results
 
-    # ----------------------
-    # Per-channel processing
-    # ----------------------
-    def process_channel(
+    def _get_histo(
         self,
-        run_name: str,
         ch: str,
-        meta: dict[str, Any],
-        f_raw: Path,
         f_dsp: Path,
-    ) -> tuple[plt.Figure | None, dict[str, Any]]:
-        """Process channel. Returns (figure_or_None, channel_result_dict).
-
-        Non-critical failures return a result dict with status 'skipped'
-        """
-        result: dict[str, Any] = {}
-        ch_idx = int(ch[2:])
-        result["voltage"] = meta[ch_idx]["v10"]
+    ) -> tuple[np.NDArray[Any], np.NDArray[Any]]:
 
         # load data
         try:
@@ -277,14 +283,33 @@ class PESpectrumAnalyzer:
             msg = f"Failed to compute pe values for {ch}: {e}"
             self.logger.warning(msg)
             return None, {"status": "skipped", "reason": msg}
+        return np.histogram(pe_vals, bins=self.bins)
+
+    # ----------------------
+    # Per-channel processing
+    # ----------------------
+    def process_channel(
+        self,
+        run_name: str,
+        ch_idx: int,
+        meta: dict[str, Any],
+        n: np.NDArray[int],
+        bins: np.NDArray[float],
+        raw_runtime: float | None = None,
+    ) -> tuple[plt.Figure | None, dict[str, Any]]:
+        """Process channel. Returns (figure_or_None, channel_result_dict).
+
+        Non-critical failures return a result dict with status 'skipped'
+        """
+        result: dict[str, Any] = {}
+        result["voltage"] = meta[ch_idx]["v10"]
 
         # histogram
         fig, ax = plt.subplots(figsize=A4_LANDSCAPE)
-        n, bins, _ = ax.hist(
-            pe_vals,
-            bins=self.bins,
-            histtype="step",
-            label=f"channel {ch} (PMT {ch_idx+1}) at {result['voltage'].magnitude:.2f}"
+        ax.stairs(
+            values=n,
+            edges=bins,
+            label=f"channel {ch_idx} (PMT {ch_idx+1}) at {result['voltage'].magnitude:.2f}"
             f" {format(result['voltage'].units,'~')}",
         )
 
@@ -302,7 +327,6 @@ class PESpectrumAnalyzer:
         result["runtime"] = {}
         if "runtime" in meta:
             result["runtime"]["aux"] = meta["runtime"]
-        raw_runtime = self._extract_runtime_if_present(f_raw, ch)
         if raw_runtime is not None:
             result["runtime"]["raw"] = raw_runtime * self.ureg.seconds
 
@@ -320,7 +344,7 @@ class PESpectrumAnalyzer:
         vi = valley_index_strict(n)
         if vi is None:
             msg = "Valley detection failed (no strict peak/valley)."
-            self.logger.warning("Run %s ch %s: %s", run_name, ch, msg)
+            self.logger.warning("Run %s ch %i: %s", run_name, ch_idx, msg)
             self._decorate_axis(ax)
             result["status"] = ("skipped",)
             result["reason"] = (msg,)
@@ -333,7 +357,7 @@ class PESpectrumAnalyzer:
         pe_vi = np.argmax(sub)
         if pe_vi is None:
             msg = "1st-p.e. detection failed after noise peak."
-            self.logger.warning("Run %s ch %s: %s", run_name, ch, msg)
+            self.logger.warning("Run %s ch %i: %s", run_name, ch_idx, msg)
             self._decorate_axis(ax)
             return fig, {"status": "skipped", "reason": msg}
 
@@ -352,13 +376,13 @@ class PESpectrumAnalyzer:
 
         if len(bin_centers_fit) < 3:
             msg = f"Insufficient bins for fitting (n_fit={len(bin_centers_fit)})."
-            self.logger.warning("Run %s ch %s: %s", run_name, ch, msg)
+            self.logger.warning("Run %s ch %i: %s", run_name, ch_idx, msg)
             self._decorate_axis(ax)
             return fig, {"status": "skipped", "reason": msg}
 
         amp0 = float(n[pe_peak_idx])
         mu0 = float(bin_centers[pe_peak_idx])
-        sigma0 = 100.0
+        sigma0 = mu0 - bins[valley_idx]
 
         try:
             m = Minuit(
@@ -370,14 +394,14 @@ class PESpectrumAnalyzer:
             m.errordef = Minuit.LIKELIHOOD
             m.migrad(iterate=10)
         except Exception as e:
-            msg = f"Minuit error for {ch}: {e}"
-            self.logger.warning("Run %s ch %s: %s", run_name, ch, msg)
+            msg = f"Minuit error for {ch_idx}: {e}"
+            self.logger.warning("Run %s ch %i: %s", run_name, ch_idx, msg)
             self._decorate_axis(ax)
             return fig, {"status": "skipped", "reason": msg}
 
         # Basic validity check
         if not getattr(m, "valid", True):
-            self.logger.warning("Minuit invalid result for run %s ch %s", run_name, ch)
+            self.logger.warning("Minuit invalid result for run %s ch %i", run_name, ch_idx)
             self._decorate_axis(ax)
             return fig, {"status": "skipped", "reason": "Minuit invalid"}
 
@@ -402,13 +426,39 @@ class PESpectrumAnalyzer:
 
         # statistics
         try:
+            border = 0.75 * fit_vals["mu"]
+            closest_index = np.abs(bin_centers - border).argmin()
+
+            dcr_idx = np.abs(bin_centers - 0.3 * fit_vals["mu"]).argmin()
+            zero_idx = np.abs(bin_centers).argmin()
+
             result["statistics"] = {
                 "1st_pe_fit_integral_below_valley": self.ureg.Quantity(
-                    ufloat(np.sum(y_fit[:valley_idx]), np.sum(y_fit[:valley_idx]) ** 0.5),
+                    ufloat(
+                        np.sum(y_fit[zero_idx:valley_idx]),
+                        np.sum(y_fit[zero_idx:valley_idx]) ** 0.5,
+                    ),
+                    "dimensionless",
+                ),
+                "1st_pe_fit_integral_below_dcr_low_lim": self.ureg.Quantity(
+                    ufloat(
+                        np.sum(y_fit[zero_idx:dcr_idx]), np.sum(y_fit[zero_idx:dcr_idx]) ** 0.5
+                    ),
+                    "dimensionless",
+                ),
+                "1st_pe_fit_integral_below_border": self.ureg.Quantity(
+                    ufloat(
+                        np.sum(y_fit[zero_idx:closest_index]),
+                        np.sum(y_fit[zero_idx:closest_index]) ** 0.5,
+                    ),
                     "dimensionless",
                 ),
                 "cts_above_valley": self.ureg.Quantity(
-                    ufloat(np.sum(n[:valley_idx]), np.sum(n[:valley_idx]) ** 0.5), "dimensionless"
+                    ufloat(np.sum(n[valley_idx:]), np.sum(n[valley_idx:]) ** 0.5), "dimensionless"
+                ),
+                "cts_above_border": self.ureg.Quantity(
+                    ufloat(np.sum(n[closest_index:]), np.sum(n[closest_index:]) ** 0.5),
+                    "dimensionless",
                 ),
                 "1st_pe_fit_integral": self.ureg.Quantity(
                     ufloat(np.sum(y_fit), np.sum(y_fit) ** 0.5), "dimensionless"
@@ -435,7 +485,7 @@ class PESpectrumAnalyzer:
             }
         except Exception as e:
             self.logger.warning(
-                "Statistics computation failed for run %s ch %s: %s", run_name, ch, e
+                "Statistics computation failed for run %s ch %i: %s", run_name, ch_idx, e
             )
             result.setdefault("statistics", {})
             result["statistics"]["error"] = str(e)
@@ -447,7 +497,7 @@ class PESpectrumAnalyzer:
     # Utilities
     # ----------------------
     def _decorate_axis(self, ax: plt.Axes) -> None:
-        ax.set_xlim(-10, 2.5e3)
+        ax.set_xlim(-10, self.bins[-1])
         ax.set_ylim(0.5, None)
         ax.set_yscale("log")
         ax.set_ylabel(f"Counts/{self.bin_size} NNLS")
@@ -502,8 +552,8 @@ class PESpectrumAnalyzer:
         if self.calib == "gain":
             label = "Gain (a.u.)"
             func = (
-                lambda x: ((x * self.ureg.NNLS).to("C") / self.ureg.elementary_charge).m,
-                lambda y: ((y * self.ureg.elementary_charge).to("NNLS")).m,
+                lambda x: ((x * self.ureg.NNLS).to("elementary_charge").m),
+                lambda y: (y * self.ureg.elementary_charge).to("NNLS").m,
             )
         else:
             if not self.ureg.NNLS.is_compatible_with(self.calib):
@@ -579,7 +629,7 @@ class PESpectrumAnalyzer:
                         signal = info.get("pe_peak_fit").get("amp")
                     else:
                         signal = info.get("statistics").get("1st_pe_guess").get("amp")
-                    run_snr[pmt] = 1 - noise / signal
+                    run_snr[pmt] = signal / noise
                 except Exception as e:
                     self.logger.warning(
                         "Failed to compute SNR for run %s channel %s: %s", run_name, pmt, e
@@ -602,7 +652,7 @@ class PESpectrumAnalyzer:
             ax.errorbar(pmts, vals, errs, label=lbl, fmt="o")
         ax.set_xlabel("Channel")
         ax.set_ylabel("SNR (a.u.)")
-        ax.set_title("SNR per Channel (= 1 - valley/peak)")
+        ax.set_title("SNR per Channel (= peak / valley)")
         ax.legend()
         plt.tight_layout()
         plot_path = self.plot_folder / "snr_plot.png"
@@ -636,8 +686,10 @@ class PESpectrumAnalyzer:
                             time_mode,
                         )
                         continue
-                    dcts = stats.get("1st_pe_fit_integral_below_valley") + stats.get(
-                        "cts_above_valley"
+                    dcts = (
+                        stats.get("1st_pe_fit_integral_below_border")
+                        + stats.get("cts_above_border")
+                        - stats.get("1st_pe_fit_integral_below_dcr_low_lim")
                     )
                     runtime = runtime_info[time_mode]
                     run_dcr[pmt] = dcts / runtime
@@ -676,6 +728,15 @@ class PESpectrumAnalyzer:
     def compute_linear_gain_fit(self) -> None:
         data = self._load_results()
         tmp_dic = {"used_keys": [], "temperatures": []}
+
+        if len(data["pe_spectrum"]) < 2:
+            msg = f"Only found {len(data['pe_spectrum'])} datapoints <2 in {self.result_yaml}"
+            self.logger.error(msg)
+            return
+        if len(data["pe_spectrum"]) < 3:
+            msg = f"Only found 2 datapoints in {self.result_yaml}. Fit will have no uncertainties."
+            self.logger.warning(msg)
+
         for key, run in data["pe_spectrum"].items():
             tmp_dic["used_keys"].append(key)
             tmp_dic["temperatures"].append(
@@ -766,7 +827,9 @@ class PESpectrumAnalyzer:
                     convert_charge_units(v)  # recurse
                 elif isinstance(v, self.ureg.Quantity):
                     if self.calib == "gain":
-                        d[k] = self._unit_converter(v, "C", self.ureg.elementary_charge)
+                        d[k] = self._unit_converter(
+                            v, self.ureg.elementary_charge
+                        )  # , 1./(1.60217663E-19*self.ureg("C")) )
                     else:
                         d[k] = self._unit_converter(v, self.calib)
 
@@ -783,102 +846,3 @@ class PESpectrumAnalyzer:
 
         msg = f"Calibrated results written to {output_file}"
         self.logger.info(msg)
-
-
-# --------------------------
-# CLI entrypoint
-# --------------------------
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="PE Spectrum Analyzer with DCR and linear gain fit"
-    )
-    parser.add_argument(
-        "-p", "--compute-pe", action="store_true", help="Do p.e. spectrum analysis"
-    )
-    parser.add_argument(
-        "-d", "--compute-dcr", action="store_true", help="Compute DCR after analysis"
-    )
-    parser.add_argument(
-        "-g", "--compute-gain", action="store_true", help="Compute linear gain fit after analysis"
-    )
-    parser.add_argument(
-        "-s", "--compute-snr", action="store_true", help="Compute SNR after analysis"
-    )
-    parser.add_argument(
-        "-c",
-        "--calibrate",
-        default="None",
-        help="Choose a charge calibration unit",
-    )
-    parser.add_argument(
-        "-b",
-        "--bin_size",
-        type=int,
-        default=20,
-        help="Number of bins used for analysis",
-    )
-    parser.add_argument(
-        "-l",
-        "--nnls_limit",
-        type=float,
-        default=20,
-        help="Lower limit for solutions in the NNLS solution vector to be accepted.",
-    )
-    parser.add_argument(
-        "-a",
-        "--aux_file",
-        help="Path to auxiliary file",
-    )
-    parser.add_argument(
-        "-o", "--override", action="store_true", help="Override results if existing"
-    )
-    parser.add_argument(
-        "-k",
-        "--keys",
-        nargs="+",
-        default=None,
-        help="Only analyse this keys, ignore all other keys in aux file",
-    )
-
-    args = parser.parse_args()
-
-    f_log = Path(args.aux_file).parent / "../ana/analysis.log"
-    f_log.parent.mkdir(parents=True, exist_ok=True)
-
-    logger = setup_logging(log_file=f_log, level=logging.INFO)
-    try:
-        analyzer = PESpectrumAnalyzer(
-            logger=logger,
-            aux_yaml=Path(args.aux_file),
-            keys=args.keys,
-            bin_size=args.bin_size,
-            lim=args.nnls_limit,
-            override_results=args.override,
-            calib=args.calibrate,
-        )
-        if args.compute_pe:
-            analyzer.run()
-        if args.compute_dcr:
-            analyzer.compute_dark_count_rate(time_mode="aux")
-        if args.compute_gain:
-            analyzer.compute_linear_gain_fit()
-        if args.compute_snr:
-            analyzer.compute_snr()
-        if args.calibrate != "None":
-            analyzer.calibrate_nnls_values(
-                output_file=str(analyzer.result_yaml).replace(".yaml", "_calibrated.yaml")
-            )
-
-        logger.info("Processing complete.")
-    except Exception as e:
-        logger.exception("Fatal error: %s", e)
-        raise
-
-
-# --------------------------
-# CLI entrypoint
-# --------------------------
-if __name__ == "__main__":
-    main()
