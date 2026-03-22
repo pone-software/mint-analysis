@@ -242,6 +242,12 @@ def main():
         help="key to upload (will be ignored for linear_gain measurement)",
     )
     parser.add_argument(
+        "-i",
+        "--icetray",
+        default=None,
+        help="Path to icetray shell if data has been analyzed using the icetray framework.",
+    )
+    parser.add_argument(
         "-r", "--reco", default="NNLS", help="Reconstruction algorithm used in DSP"
     )
 
@@ -392,6 +398,20 @@ def main():
                 framework = version("mint-analysis")
             except PackageNotFoundError:
                 framework = "unknown"
+
+            # get icetray version from shell file if used
+            if args.icetray:
+                ice = "icetray.unknown_version"
+                with open(args.icetray, encoding="utf-8") as file:
+                    for line in file:
+                        if line.strip().startswith('printctr "Version'):
+                            ice = "icetray" + "_".join(
+                                line.split('printctr "Version')[-1]
+                                .replace('"', "")
+                                .replace("icetray", "")
+                                .split()
+                            )
+                framework += "_" + ice
 
             sw_info = SoftwareInfo(
                 framework="mint_analyis_" + framework,
