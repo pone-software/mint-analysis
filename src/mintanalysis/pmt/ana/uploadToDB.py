@@ -242,6 +242,12 @@ def main():
         help="key to upload (will be ignored for linear_gain measurement)",
     )
     parser.add_argument(
+        "-i",
+        "--icetray",
+        default=None,
+        help="Path to icetray shell if data has been analyzed using the icetray framework.",
+    )
+    parser.add_argument(
         "-r", "--reco", default="NNLS", help="Reconstruction algorithm used in DSP"
     )
 
@@ -361,77 +367,99 @@ def main():
             msg = f"Tag {tag} not found in the result file"
             logger.error(msg)
             raise ValueError
+    try:
+        db = ProductionDatabase(**db_opts)
+        while ch_mask:
+            hs = aux["hemisphere_a"]
+            ch = (ch_mask & -ch_mask).bit_length() - 1
+            pmt_no = ch + 1
+            if pmt_no > 8:
+                pmt_no -= 8
+                hs = aux["hemisphere_b"]
 
-    while ch_mask:
-        ch = (ch_mask & -ch_mask).bit_length() - 1
-        pmt_no = ch + 1
+            # collect value(s)
+            vals, errs, units, mapping, _keys = get_values(
+                data[measurement][pmt_no]
+                if measurement == "linear_gain"
+                else data[measurement][tag][pmt_no]
+            )
+            logger.info("collected measurement results")
 
-        # collect value(s)
-        vals, errs, units, mapping, _keys = get_values(
-            data[measurement][pmt_no]
-            if measurement == "linear_gain"
-            else data[measurement][tag][pmt_no]
-        )
-        logger.info("collected measurement results")
+            # collect pmt info
+            pmt_info = get_pmt_info(pmt_no, aux, tag)
+            logger.info("collected PMT info")
 
-        # collect pmt info
-        pmt_info = get_pmt_info(pmt_no, aux, tag)
-        logger.info("collected PMT info")
+            # get environment info
+            env_info = get_env_info(aux, tag)
+            logger.info("collected environment info")
 
-        # get environment info
-        env_info = get_env_info(aux, tag)
-        logger.info("collected environment info")
+            # get software info
+            try:
+                framework = version("mint-analysis")
+            except PackageNotFoundError:
+                framework = "unknown"
 
-        # get software info
-        try:
-            framework = version("mint-analysis")
-        except PackageNotFoundError:
-            framework = "unknown"
+            # get icetray version from shell file if used
+            if args.icetray:
+                ice = "icetray.unknown_version"
+                with open(args.icetray, encoding="utf-8") as file:
+                    for line in file:
+                        if line.strip().startswith('printctr "Version'):
+                            ice = "icetray" + "_".join(
+                                line.split('printctr "Version')[-1]
+                                .replace('"', "")
+                                .replace("icetray", "")
+                                .split()
+                            )
+                framework += "_" + ice
 
-        sw_info = SoftwareInfo(
-            framework="mint_analyis_" + framework,
-            pe_reconstruction=reco,
-            sftp_path=sftp_dir,
-            run_tags=tag,
-        )
-        logger.info("collected software info")
+            sw_info = SoftwareInfo(
+                framework="mint_analyis_" + framework,
+                pe_reconstruction=reco,
+                sftp_path=sftp_dir,
+                run_tags=tag,
+            )
+            logger.info("collected software info")
 
-        # get used devices
-        # Get settings from DB
-        # TODO replace with module level logic
-        with ProductionDatabase(**db_opts) as db:
-            overview = db.get_hemisphere_overview(str(sftp_root_dir), "tum")
+            # get used devices
+            # Get settings from DB
+            # TODO replace with module level logic
+
+            overview = db.get_hemisphere_overview(hs, "sfu")
+            pmt_units = {int(p.get("position")): p for p in overview.get("pmt-unit")}
+
             pmt_obj = {
                 "device_type": "pmt-unit",
-                "uid": overview.get("pmt-unit").get(str(pmt_no)).get("uid"),
-                "_id": overview.get("pmt-unit").get(str(pmt_no)).get("_id"),
+                "uid": pmt_units.get(pmt_no).get("uid"),
+                "_id": pmt_units.get(pmt_no).get("_id"),
             }
 
-        # Build measurement result
-        res = MeasurementResult(
-            measurement_type=measurement,
-            measurement_location="MINT",
-            devices_used=pmt_obj,
-            result=vals,
-            result_unc=errs,
-            units=units,
-            mapping=mapping,
-            pmt_info=pmt_info,
-            env_info=env_info,
-            software_info=sw_info,
-        )
-        logger.info("Build data object")
+            # Build measurement result
+            res = MeasurementResult(
+                measurement_type=measurement,
+                measurement_location="MINT",
+                devices_used=pmt_obj,
+                result=vals,
+                result_unc=errs,
+                units=units,
+                mapping=mapping,
+                pmt_info=pmt_info,
+                env_info=env_info,
+                software_info=sw_info,
+            )
+            logger.info("Build data object")
 
-        # Upload to database
-        if args.dry:
-            msg = f"The following dict would be uploaded to the DB: {asdict(res)}"
-        else:
-            with ProductionDatabase(**db_opts) as db:
+            # Upload to database
+            if args.dry:
+                msg = f"The following dict would be uploaded to the DB: {asdict(res)}"
+            else:
                 db.client["mint"]["Measurements_Pmt"].insert_one(asdict(res))
-            msg = f"Uploaded document {asdict(res)} to mint/Measurements_Pmt"
+                msg = f"Uploaded document {asdict(res)} to mint/Measurements_Pmt"
 
-        logger.info(msg)
-        ch_mask &= ch_mask - 1  # clear lowest set bit
+            logger.info(msg)
+            ch_mask &= ch_mask - 1  # clear lowest set bit
+    finally:
+        db.disconnect()
 
 
 # --------------------------
