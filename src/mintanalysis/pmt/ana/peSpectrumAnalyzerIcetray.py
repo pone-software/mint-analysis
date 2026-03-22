@@ -5,7 +5,8 @@ from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
-from icecube import icetray
+from icecube import icetray, pone_unfolding
+
 from matplotlib.backends.backend_pdf import PdfPages
 
 from mintanalysis.pmt.ana.peSpectrumAnalyzer import PESpectrumAnalyzer
@@ -28,7 +29,7 @@ class IceTraySpectrumAnalyzer(PESpectrumAnalyzer):
         super().__init__(
             aux_yaml, keys, ignore_keys, bin_size, lim, override_results, logger, calibrator, calib
         )
-        self.bins = np.arange(0, 10, 20.0 / bin_size)
+        self.bins = np.arange(0, 20, 20.0 / bin_size)
         self.f_i3 = f_i3
         icetray.set_log_level(icetray.I3LogLevel.LOG_WARN)
 
