@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, List
 
 import yaml
-from andromeda.testing.devices.production_database import ProductionDatabase
+from andromeda.tools.production_database import ProductionDatabase
 from pint import UnitRegistry
 from pint.errors import UndefinedUnitError
 
