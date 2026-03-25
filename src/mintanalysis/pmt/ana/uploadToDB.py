@@ -425,7 +425,7 @@ def main():
             # Get settings from DB
             # TODO replace with module level logic
 
-            overview = db.get_hemisphere_overview(hs, "sfu")
+            overview = db.get_hemisphere_overview(hs)
             pmt_units = {int(p.get("position")): p for p in overview.get("pmt-unit")}
 
             pmt_obj = {
