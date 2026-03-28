@@ -379,14 +379,14 @@ def main():
 
             # collect value(s)
             vals, errs, units, mapping, _keys = get_values(
-                data[measurement][pmt_no]
+                data[measurement][ch]
                 if measurement == "linear_gain"
-                else data[measurement][tag][pmt_no]
+                else data[measurement][tag][ch]
             )
             logger.info("collected measurement results")
 
             # collect pmt info
-            pmt_info = get_pmt_info(pmt_no, aux, tag)
+            pmt_info = get_pmt_info(ch, aux, tag)
             logger.info("collected PMT info")
 
             # get environment info
