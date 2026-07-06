@@ -5,8 +5,7 @@ from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
-from icecube import icetray, pone_unfolding
-
+from icecube import icetray
 from matplotlib.backends.backend_pdf import PdfPages
 
 from mintanalysis.pmt.ana.peSpectrumAnalyzer import PESpectrumAnalyzer
